@@ -1,0 +1,112 @@
+#!/usr/bin/bash
+
+# Usage: ./global-aws-restore.sh --source <s3://bucket> --destination <path> [--pattern <glob>] [--parallel [N]] [--profile <profile>] [--region <region>]
+
+set -e
+
+show_help() {
+  echo "Usage: $0 --source <s3://bucket> --destination <path> [--pattern <glob>] [--parallel [N]] [--profile <profile>] [--region <region>] [--list-files]"
+  echo ""
+  echo "Options:"
+  echo "  --source <s3://bucket>  Source S3 bucket to restore from."
+  echo "  --destination <path>    Local directory to restore files into."
+  echo "  --pattern <glob>        Glob pattern to filter files (e.g., redis*202504*)."
+  echo "  --parallel [N]          Restore up to N files in parallel (default: 4)."
+  echo "  --profile <profile>     AWS CLI profile to use."
+  echo "  --region <region>       AWS region to use."
+  echo "  --list-files            Only print files that would be downloaded."
+  echo "  -h, --help              Show this help message."
+  echo ""
+  exit 1
+}
+
+# Show help if no arguments or if -h/--help is used
+if [ $# -eq 0 ] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]] || [[ -z "${*// }" ]]; then
+  show_help
+fi
+
+PARALLEL=false
+PARALLEL_JOBS=4
+PROFILE=""
+REGION=""
+PATTERN=""
+LIST_FILES=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --source)
+      SRC="$2"
+      shift 2
+      ;;
+    --destination)
+      DST="$2"
+      shift 2
+      ;;
+    --pattern)
+      PATTERN="$2"
+      shift 2
+      ;;
+    --parallel)
+      PARALLEL=true
+      if [[ -n $2 && $2 =~ ^[0-9]+$ ]]; then
+        PARALLEL_JOBS=$2
+        shift 2
+      else
+        shift 1
+      fi
+      ;;
+    --profile)
+      PROFILE="--profile $2"
+      shift 2
+      ;;
+    --region)
+      REGION="--region $2"
+      shift 2
+      ;;
+    --list-files)
+      LIST_FILES=true
+      shift 1
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "$SRC" || -z "$DST" ]]; then
+  echo "Usage: $0 --source <s3://bucket> --destination <path> [--pattern <glob>] [--parallel [N]] [--profile <profile>] [--region <region>] [--list-files]"
+  exit 1
+fi
+
+# List all files in the bucket
+FILES=$(aws s3 ls --recursive $SRC $PROFILE $REGION | awk '{print $4}' | while read -r key; do echo "$SRC/$key"; done)
+
+# Filter by pattern if provided
+if [[ -n "$PATTERN" ]]; then
+  FILES=$(echo "$FILES" | grep -E "$(echo $PATTERN | sed 's/\*/.*/g; s/\?/.?/g')")
+fi
+
+restore_file() {
+  local file="$1"
+  RELPATH=${file#s3://*/}
+  DEST_PATH="$DST/$RELPATH"
+  mkdir -p "$(dirname "$DEST_PATH")"
+  if $LIST_FILES; then
+    echo "[LIST] $file -> $DEST_PATH"
+  else
+    echo "Restoring $file to $DEST_PATH"
+    aws s3 cp "$file" "$DEST_PATH" $PROFILE $REGION
+  fi
+}
+
+if $PARALLEL; then
+  export -f restore_file
+  export DST PROFILE REGION LIST_FILES
+  echo "$FILES" | xargs -I{} -P $PARALLEL_JOBS bash -c 'restore_file "$0"' {}
+else
+  while IFS= read -r file; do
+    restore_file "$file"
+  done <<< "$FILES"
+fi 

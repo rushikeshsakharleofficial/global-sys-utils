@@ -1,0 +1,131 @@
+#!/usr/bin/bash
+
+# Usage: ./global-aws-backup.sh --source <path> --destination <s3://bucket> --days <N> [--parallel [N]] [--profile <profile>] [--region <region>]
+
+set -e
+
+PARALLEL=false
+PARALLEL_JOBS=4
+PROFILE=""
+REGION=""
+
+# Add --pattern argument
+PATTERN=""
+
+show_help() {
+  echo "Usage: $0 --source <path> --destination <s3://bucket> --days <N> [--pattern <glob>] [--parallel [N]] [--profile <profile>] [--region <region>]"
+  echo ""
+  echo "Options:"
+  echo "  --source <path>         Source directory to scan for logs."
+  echo "  --destination <s3://bucket>  Destination S3 bucket."
+  echo "  --days <N>              Only move files older than N days."
+  echo "  --pattern <glob>        Optional glob pattern to filter files (e.g., redis*202504*)."
+  echo "  --parallel [N]          Move up to N files in parallel (default: 4)."
+  echo "  --profile <profile>     AWS CLI profile to use."
+  echo "  --region <region>       AWS region to use."
+  echo "  -h, --help              Show this help message."
+  echo ""
+  exit 1
+}
+
+# Show help if no arguments or if -h/--help is used
+if [ $# -eq 0 ] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]] || [[ -z "${*// }" ]]; then
+  show_help
+fi
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --source)
+      SRC="$2"
+      shift 2
+      ;;
+    --destination)
+      DST="$2"
+      shift 2
+      ;;
+    --days)
+      DAYS="$2"
+      shift 2
+      ;;
+    --pattern)
+      PATTERN="$2"
+      shift 2
+      ;;
+    --parallel)
+      PARALLEL=true
+      if [[ -n $2 && $2 =~ ^[0-9]+$ ]]; then
+        PARALLEL_JOBS=$2
+        shift 2
+      else
+        shift 1
+      fi
+      ;;
+    --profile)
+      PROFILE="--profile $2"
+      shift 2
+      ;;
+    --region)
+      REGION="--region $2"
+      shift 2
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "$SRC" || -z "$DST" || -z "$DAYS" ]]; then
+  echo "Usage: $0 --source <path> --destination <s3://bucket> --days <N> [--pattern <glob>] [--parallel [N]] [--profile <profile>] [--region <region>]"
+  exit 1
+fi
+
+DST="${DST%/}"
+HOSTNAME=$(hostname)
+
+# Calculate cutoff date
+CUTOFF_YMD=$(date -d "-$DAYS day" +%Y%m%d)
+CUTOFF_YMD_DASH=$(date -d "-$DAYS day" +%Y-%m-%d)
+
+move_file() {
+  local file="$1"
+  local BASENAME=$(basename "$file")
+  local MOVE=0
+  # Extract YYYYMMDD or YYYY-MM-DD from filename
+  if [[ $BASENAME =~ ([0-9]{8}) ]]; then
+    FILE_DATE=${BASH_REMATCH[1]}
+    if [[ $FILE_DATE < $CUTOFF_YMD ]]; then
+      MOVE=1
+    fi
+  elif [[ $BASENAME =~ ([0-9]{4}-[0-9]{2}-[0-9]{2}) ]]; then
+    FILE_DATE=${BASH_REMATCH[1]}
+    if [[ $FILE_DATE < $CUTOFF_YMD_DASH ]]; then
+      MOVE=1
+    fi
+  fi
+  if [[ $MOVE -eq 1 ]]; then
+    DIR=$(dirname "$file")
+    RELDIR="${DIR#/}"
+    DEST_PATH="$DST/$HOSTNAME/$RELDIR/"
+    echo "Moving $file to $DEST_PATH"
+    aws s3 mv "$file" "$DEST_PATH" $PROFILE $REGION
+  fi
+}
+
+# Find files based on pattern
+if [[ -n "$PATTERN" ]]; then
+  FIND_CMD=(find "$SRC" -type f -name "$PATTERN" -print0)
+else
+  FIND_CMD=(find "$SRC" -type f -print0)
+fi
+
+if $PARALLEL; then
+  export -f move_file
+  export DST HOSTNAME CUTOFF_YMD CUTOFF_YMD_DASH PROFILE REGION
+  "${FIND_CMD[@]}" | xargs -0 -n 1 -P $PARALLEL_JOBS bash -c 'move_file "$0"'
+else
+  "${FIND_CMD[@]}" | while IFS= read -r -d '' file; do
+    move_file "$file"
+  done
+fi 
