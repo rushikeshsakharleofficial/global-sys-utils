@@ -89,11 +89,6 @@ fi
 
 # Remove trailing slash if present
 LOG_DIR="${LOG_DIR%/}"
-if [ -z "$OLD_LOGS_DIR" ]; then
-  OLD_LOGS_DIR="${LOG_DIR}/old_logs"
-fi
-# Remove trailing slash if present
-OLD_LOGS_DIR="${OLD_LOGS_DIR%/}"
 BACKUP_DIR="$OLD_LOGS_DIR/$(date +%Y%m%d)"
 
 LOG_FILES=$(find "$LOG_DIR" -type f -name "$PATTERN" -printf "%s %p\n" 2>/dev/null | sort -n | awk '{print $2}')
@@ -109,33 +104,37 @@ rotate_log_file() {
     # Get directory and basename of log file
     local log_dir=$(dirname "$LOG_FILE")
     local log_name=$(basename "$LOG_FILE")
-    ROTATED_BASENAME="${log_name}.${DATE_SUFFIX}"
+    local rotated_basename="${log_name}.${DATE_SUFFIX}"
+    local backup_root
+    local backup_dir
+    local archived_file
     
-    # Create old_logs directory in the same directory as the log file
+    # Set backup locations
     if [ -n "$OLD_LOGS_DIR" ]; then
-      BACKUP_ROOT="$OLD_LOGS_DIR"
+      # If -o specified, use central backup directory
+      backup_root="$OLD_LOGS_DIR"
     else
-      BACKUP_ROOT="${log_dir}/old_logs"
+      # Otherwise use local old_logs directory
+      backup_root="${log_dir}/old_logs"
     fi
     
     # Create backup path with date
-    BACKUP_DIR="$BACKUP_ROOT/$(date +%Y%m%d)"
-    PURGE_DIR="$BACKUP_ROOT"
-    ARCHIVED_FILE="$BACKUP_DIR/${ROTATED_BASENAME}.gz"
+    backup_dir="$backup_root/$(date +%Y%m%d)"
+    archived_file="$backup_dir/${rotated_basename}.gz"
 
-    if [ -f "$ARCHIVED_FILE" ]; then
+    if [ -f "$archived_file" ]; then
       echo "$(date): Already rotated, skipping: $LOG_FILE"
       return
     fi
 
     if $DRY_RUN; then
-      echo "[DRY-RUN] Would Rotate: ${LOG_FILE} -> $ARCHIVED_FILE"
+      echo "[DRY-RUN] Would Rotate: ${LOG_FILE} -> $archived_file"
     else
-      mkdir -p "$BACKUP_DIR"
-      cp "$LOG_FILE" "$BACKUP_DIR/${ROTATED_BASENAME}"
+      mkdir -p "$backup_dir"
+      cp "$LOG_FILE" "$backup_dir/${rotated_basename}"
       > "$LOG_FILE"
-      gzip "$BACKUP_DIR/${ROTATED_BASENAME}"
-      echo "$(date): Rotated: $LOG_FILE -> $ARCHIVED_FILE"
+      gzip "$backup_dir/${rotated_basename}"
+      echo "$(date): Rotated: $LOG_FILE -> $archived_file"
     fi
   else
     echo "$(date): Skipping empty or missing file: $LOG_FILE"
