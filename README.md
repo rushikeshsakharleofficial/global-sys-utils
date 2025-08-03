@@ -15,6 +15,7 @@ A collection of scripts for log rotation, backup, and restore operations support
 The package is available as an RPM for RHEL/CentOS 9:
 
 ```bash
+git clone https://github.com/rushikeshsakharleofficial/global-sys-utils.git
 cd global-sys-utils
 rpm -ivh RPMS/noarch/global-sys-utils-1.0.10-1.el9.noarch.rpm
 ```
