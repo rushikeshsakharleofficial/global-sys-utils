@@ -3,7 +3,7 @@ Version:        1.0.10
 Release:        1%{?dist}
 Summary:        System utilities for log rotation and cloud backup
 License:        MIT
-URL:            https://github.com/rushikesh/global-sys-utils
+URL:            https://github.com/rushikeshsakharleofficial/global-sys-utils
 BuildArch:      noarch
 AutoReqProv:    no
 
