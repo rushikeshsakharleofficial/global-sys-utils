@@ -1,155 +1,131 @@
 #!/usr/bin/env bash
-
-source /etc/bashrc
 set -euo pipefail
+IFS=$'\n\t'
 
-# Required commands
-REQUIRED_CMDS=(find awk gzip date mkdir basename xargs cp)
-
-check_commands() {
-  local missing=()
-  for cmd in "${REQUIRED_CMDS[@]}"; do
-    if ! command -v "$cmd" &>/dev/null; then
-      missing+=("$cmd")
-    fi
-  done
-  if [[ ${#missing[@]} -ne 0 ]]; then
-    echo "Error: Missing commands: ${missing[*]}" >&2
-    exit 1
-  fi
-}
-check_commands
-
-# Initialize variables
+# Defaults
 LOG_DIR=""
-PATTERN="*.log"
+FILE_PATTERN="*.log"
 DRY_RUN=false
-PARALLEL=false
-PARALLEL_JOBS=4
-TIMESTAMP_FORMAT="%Y%m%dT%H:%M:%S"
-DATE_ONLY_FORMAT="%Y%m%d"
+PARALLEL=4
+DEST_DIR=""           # optional
+
+# Timestamp flags
+USE_FULL_TIMESTAMP=false
 USE_DATE_ONLY=false
+
+FULL_TIMESTAMP_FORMAT="%Y%m%dT%H:%M:%S"
+DATE_ONLY_FORMAT="%Y%m%d"
 
 usage() {
   cat <<EOF
-Usage: $0 -p <log_directory> [--pattern <glob>] [options]
+Usage: $0 -H|-D -p <log_dir> [-o <dest_dir>] [options]
+
+Required (choose one):
+  -H                Full timestamp (YYYYMMDDTHH:MM:SS)
+  -D                Date-only format (YYYYMMDD)
+
 Required:
-  -p <dir>          Base log directory
+  -p <dir>          Directory containing log files
+
 Optional:
-  --pattern <glob>  File pattern to rotate (default: *.log)
-Options:
-  -H                Use full timestamp (YYYYMMDDTHH:MM:SS)
-  -D                Use date-only stamp (YYYYMMDD)
-  -n                Dry-run mode
-  --parallel [N]    Rotate in parallel (N jobs, default: 4)
-  -h                Show this help message
+  -o <dir>          Global destination root (default: file's own parent/old_logs)
+  -f <pattern>      File pattern (default: *.log)
+  -n                Dry-run (just print, no changes)
+  --parallel <N>    Parallel jobs (default: 4)
+  -h, --help        Show this help
 EOF
   exit 1
 }
 
-# Show help if no arguments
-if [[ $# -eq 0 ]]; then
-  usage
-fi
-
-# Parse options
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    -p) LOG_DIR="$2"; shift 2;;
-    --pattern) PATTERN="$2"; shift 2;;
-    -H) USE_DATE_ONLY=false; shift;;
-    -D) USE_DATE_ONLY=true; shift;;
-    -n) DRY_RUN=true; shift;;
-    --parallel)
-      PARALLEL=true
-      if [[ -n ${2-} && $2 =~ ^[0-9]+$ ]]; then
-        PARALLEL_JOBS="$2"; shift 2
-      else
-        shift
-      fi;;
-    -h|--help) usage;;
-    *) echo "Error: Unknown option: $1" >&2; usage;;
+# Parse args
+while (( $# )); do
+  case $1 in
+    -H) USE_FULL_TIMESTAMP=true; shift ;;
+    -D) USE_DATE_ONLY=true;    shift ;;
+    -p) LOG_DIR="$2";          shift 2 ;;
+    -o) DEST_DIR="$2";         shift 2 ;;
+    -f) FILE_PATTERN="$2";     shift 2 ;;
+    -n) DRY_RUN=true;          shift ;;
+    --parallel) PARALLEL="$2"; shift 2 ;;
+    -h|--help) usage ;;
+    *) echo "Unknown option: $1"; usage ;;
   esac
 done
 
-# Validate required argument LOG_DIR
+# Validate flags
+if $USE_FULL_TIMESTAMP && $USE_DATE_ONLY; then
+  echo "Error: Cannot use both -H and -D" >&2; usage
+fi
+if ! $USE_FULL_TIMESTAMP && ! $USE_DATE_ONLY; then
+  echo "Error: Must specify either -H or -D" >&2; usage
+fi
 if [[ -z "$LOG_DIR" ]]; then
-  echo "Error: -p <log_directory> is required." >&2
-  usage
+  echo "Error: -p <log_dir> is required" >&2; usage
 fi
 
-# Function to get timestamp
-get_timestamp() {
-  if [[ "$USE_DATE_ONLY" == true ]]; then
-    date +"$DATE_ONLY_FORMAT"
-  else
-    date +"$TIMESTAMP_FORMAT"
-  fi
-}
-
-# Validate log dir
+# Normalize and check LOG_DIR
+LOG_DIR="${LOG_DIR%/}"
 if [[ ! -d "$LOG_DIR" ]]; then
-  echo "Error: Log directory not found: $LOG_DIR" >&2
-  exit 1
+  echo "Error: Log directory not found: $LOG_DIR" >&2; exit 1
 fi
 
-# Gather non-empty log files
-mapfile -t LOG_FILES < <(find "$LOG_DIR" -type f -name "$PATTERN" -size +0c)
-if [[ ${#LOG_FILES[@]} -eq 0 ]]; then
-  echo "No non-empty log files matching '$PATTERN' in $LOG_DIR"
+# Determine timestamp
+if $USE_FULL_TIMESTAMP; then
+  TS_FMT="$FULL_TIMESTAMP_FORMAT"
+else
+  TS_FMT="$DATE_ONLY_FORMAT"
+fi
+TIMESTAMP="$(date +"$TS_FMT")"
+
+# Collect files
+mapfile -t LOG_FILES < <(
+  find "$LOG_DIR" -maxdepth 1 -type f -name "$FILE_PATTERN" -size +0c 2>/dev/null
+)
+
+if ((${#LOG_FILES[@]} == 0)); then
+  echo "No log files matching '$FILE_PATTERN' in $LOG_DIR"
   exit 0
 fi
 
-# Rotation function
+# Rotate function
 rotate_file() {
   local file="$1"
-  local ts parent base dest_dir tmp_file archive
+  local parent base out_root final_dest dest
 
   parent=$(dirname "$file")
   base=$(basename "$file")
 
-  # Skip compressed files
-  if [[ "$base" == *.gz ]]; then
-    echo "Skipping already compressed file: $file"
-    return
+  # Decide root of destination
+  if [[ -n "$DEST_DIR" ]]; then
+    out_root="$DEST_DIR"
+  else
+    out_root="$parent/old_logs"
   fi
 
-  ts=$(get_timestamp)
-  dest_dir="$parent/old_logs/$(date +"$DATE_ONLY_FORMAT")"
-  tmp_file="$dest_dir/${base}.${ts}"
-  archive="$tmp_file.gz"
-
-  # Create dest directory
+  final_dest="$out_root/$TIMESTAMP"
   if ! $DRY_RUN; then
-    mkdir -p "$dest_dir"
+    mkdir -p "$final_dest"
   fi
 
-  # Skip if archive exists
-  if [[ -f "$archive" ]]; then
-    echo "Already rotated: $file"
-    return
-  fi
+  dest="$final_dest/${base}.${TIMESTAMP}.gz"
 
   if $DRY_RUN; then
-    echo "[DRY] Rotate: $file -> $archive"
+    echo "[DRY] $file → $dest"
   else
-    cp "$file" "$tmp_file"
-    : > "$file"
-    gzip "$tmp_file"
-    echo "Rotated: $file -> $archive"
+    gzip -c "$file" > "$dest" && : > "$file"
+    echo "Rotated: $file → $dest"
   fi
 }
 
-# Export for parallel
-export -f rotate_file get_timestamp
-export DRY_RUN TIMESTAMP_FORMAT DATE_ONLY_FORMAT USE_DATE_ONLY
+export -f rotate_file
+export TIMESTAMP DEST_DIR DRY_RUN
 
-# Execute rotation
-if [[ "$PARALLEL" == true ]]; then
-  printf "%s\n" "${LOG_FILES[@]}" | xargs -P "$PARALLEL_JOBS" -n1 bash -c 'rotate_file "$0"'
+# Dispatch
+if (( PARALLEL > 1 )); then
+  printf '%s\n' "${LOG_FILES[@]}" \
+    | xargs -r -n1 -P "$PARALLEL" bash -c 'rotate_file "$0"' 
 else
-  for file in "${LOG_FILES[@]}"; do
-    rotate_file "$file"
+  for f in "${LOG_FILES[@]}"; do
+    rotate_file "$f"
   done
 fi
-
