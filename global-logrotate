@@ -1,162 +1,139 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 
 source /etc/bashrc
 
-REQUIRED_CMDS=("find" "awk" "gzip" "cp" "mv" "date" "mkdir" "basename" "xargs")
+set -euo pipefail
+
+
+
+# Required commands
+REQUIRED_CMDS=(find awk gzip date mkdir basename xargs cp)
 
 check_commands() {
   local missing=()
   for cmd in "${REQUIRED_CMDS[@]}"; do
-    if ! command -v "$cmd" >/dev/null 2>&1; then
+    if ! command -v "$cmd" &>/dev/null; then
       missing+=("$cmd")
     fi
   done
-
-  if [ ${#missing[@]} -ne 0 ]; then
-    echo "Error: The following required command(s) are missing: ${missing[*]}"
+  if [[ ${#missing[@]} -ne 0 ]]; then
+    echo "Error: Missing commands: ${missing[*]}" >&2
     exit 1
   fi
 }
-
 check_commands
 
+# Default settings
 LOG_DIR="/var/log/apps"
-DATE_SUFFIX=""
 PATTERN="*.log"
-CUSTOM_PATH_USED=false
-RETENTION_DAYS=""
 DRY_RUN=false
-OLD_LOGS_DIR=""
 PARALLEL=false
 PARALLEL_JOBS=4
+TIMESTAMP_FORMAT="%Y%m%dT%H:%M:%S"
+DATE_ONLY_FORMAT="%Y%m%d"
+USE_DATE_ONLY=false
 
-show_help() {
-  echo "Usage: $0 [-H] [-D] [--pattern <glob>] [-p /path/to/logs] [-r days] [-n] [-o /path/to/old_logs] [--parallel N]"
-  echo ""
-  echo "Options:"
-  echo "  -H                Use full timestamp format (YYYYMMDDTHH:MM:SS)"
-  echo "  -D                Use date-only format (YYYYMMDD)"
-  echo "  --pattern <glob>  File pattern to rotate (default: *.log)"
-  echo "  -p <path>         Specify custom log directory (default: /var/log/apps)"
-  echo "  -r <days>         Purge rotated logs older than <days>"
-  echo "  -n                Dry-run mode (no changes made)"
-  echo "  -o <path>         Specify old_logs directory (default: <logdir>/old_logs)"
-  echo "  --parallel N      Rotate up to N log files in parallel (default: 4)"
-  echo ""
+usage() {
+  cat <<EOF
+Usage: $0 [options]
+  -H                Use full timestamp (YYYYMMDDTHH:MM:SS)
+  -D                Use date-only stamp (YYYYMMDD)
+  --pattern <glob>  File pattern (default: *.log)
+  -p <dir>          Base log directory (default: /var/log/apps)
+  -n                Dry-run
+  --parallel [N]    Rotate in parallel (optional N jobs)
+  -h                Show help
+EOF
   exit 1
 }
 
-# Show help if no arguments are provided or all arguments are empty/whitespace
-if [ $# -eq 0 ] || [[ -z "${*// }" ]]; then
-  show_help
-fi
-
-# Parse short and long options
-ARGS=()
+# Parse options
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -H) DATE_SUFFIX=$(date +%Y%m%dT%H:%M:%S); shift ;;
-    -D) DATE_SUFFIX=$(date +%Y%m%d); shift ;;
-    --pattern)
-      PATTERN="$2"; shift 2 ;;
-    -p) LOG_DIR="$2"; CUSTOM_PATH_USED=true; shift 2 ;;
-    -r) RETENTION_DAYS="$2"; shift 2 ;;
-    -n) DRY_RUN=true; shift ;;
-    -o) OLD_LOGS_DIR="$2"; shift 2 ;;
+    -H) USE_DATE_ONLY=false; shift;;
+    -D) USE_DATE_ONLY=true; shift;;
+    --pattern) PATTERN="$2"; shift 2;;
+    -p) LOG_DIR="$2"; shift 2;;
+    -n) DRY_RUN=true; shift;;
     --parallel)
       PARALLEL=true
-      if [[ -n $2 && $2 =~ ^[0-9]+$ ]]; then
-        PARALLEL_JOBS=$2
-        shift 2
+      if [[ -n ${2-} && $2 =~ ^[0-9]+$ ]]; then
+        PARALLEL_JOBS="$2"; shift 2
       else
-        shift 1
-      fi
-      ;;
-    -h|--help) show_help ;;
-    --) shift; break ;;
-    -*) show_help ;;
-    *) ARGS+=("$1"); shift ;;
+        shift
+      fi;;
+    -h|--help) usage;;
+    *) usage;;
   esac
 done
-set -- "${ARGS[@]}"
 
-if $CUSTOM_PATH_USED && [ ! -d "$LOG_DIR" ]; then
-  echo "Error: Custom log path '$LOG_DIR' does not exist."
+# Function to get timestamp
+get_timestamp() {
+  if [[ "$USE_DATE_ONLY" == true ]]; then
+    date +"$DATE_ONLY_FORMAT"
+  else
+    date +"$TIMESTAMP_FORMAT"
+  fi
+}
+
+# Validate log dir
+if [[ ! -d "$LOG_DIR" ]]; then
+  echo "Error: Log directory not found: $LOG_DIR" >&2
   exit 1
 fi
 
-if [ -z "$DATE_SUFFIX" ]; then
-  DATE_SUFFIX=$(date +%Y%m%d)
-fi
-
-# Remove trailing slash if present
-LOG_DIR="${LOG_DIR%/}"
-if [ -z "$OLD_LOGS_DIR" ]; then
-  OLD_LOGS_DIR="${LOG_DIR}/old_logs"
-fi
-# Remove trailing slash if present
-OLD_LOGS_DIR="${OLD_LOGS_DIR%/}"
-BACKUP_DIR="$OLD_LOGS_DIR/$(date +%Y%m%d)"
-
-LOG_FILES=$(find "$LOG_DIR" -type f -name "$PATTERN" -printf "%s %p\n" 2>/dev/null | sort -n | awk '{print $2}')
-
-if [ -z "$LOG_FILES" ]; then
-  echo "No files matching pattern '$PATTERN' found in $LOG_DIR"
+# Gather non-empty log files
+mapfile -t LOG_FILES < <(find "$LOG_DIR" -type f -name "$PATTERN" -size +0c)
+if [[ ${#LOG_FILES[@]} -eq 0 ]]; then
+  echo "No non-empty log files matching '$PATTERN' in $LOG_DIR"
   exit 0
 fi
 
-rotate_log_file() {
-  LOG_FILE="$1"
-  if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
-    ROTATED_BASENAME="$(basename "$LOG_FILE").${DATE_SUFFIX}"
-    LOG_PARENT="$(dirname "$LOG_FILE")"
-    # Use custom OLD_LOGS_DIR if specified, else default to LOG_PARENT/old_logs
-    if [ -n "$OLD_LOGS_DIR" ]; then
-      BACKUP_DIR="$OLD_LOGS_DIR/$(date +%Y%m%d)"
-      PURGE_DIR="$OLD_LOGS_DIR"
-    else
-      BACKUP_DIR="$LOG_PARENT/old_logs/$(date +%Y%m%d)"
-      PURGE_DIR="$LOG_PARENT/old_logs"
-    fi
-    ARCHIVED_FILE="$BACKUP_DIR/${ROTATED_BASENAME}.gz"
+# Rotation function
+rotate_file() {
+  local file="$1"
+  local ts parent base dest_dir tmp_file archive
 
-    if [ -f "$ARCHIVED_FILE" ]; then
-      echo "$(date): Already rotated, skipping: $LOG_FILE"
-      return
-    fi
+  parent=$(dirname "$file")
+  base=$(basename "$file")
 
-    if $DRY_RUN; then
-      echo "[DRY-RUN] Would Rotate: ${LOG_FILE} -> $ARCHIVED_FILE"
-    else
-      mkdir -p "$BACKUP_DIR"
-      cp "$LOG_FILE" "$BACKUP_DIR/${ROTATED_BASENAME}"
-      > "$LOG_FILE"
-      gzip "$BACKUP_DIR/${ROTATED_BASENAME}"
-      echo "$(date): Rotated: $LOG_FILE -> $ARCHIVED_FILE"
-    fi
-  else
-    echo "$(date): Skipping empty or missing file: $LOG_FILE"
+  # Skip if already compressed
+  if [[ "$base" == *.gz ]]; then
+    echo "Skipping already compressed file: $file"
+    return
   fi
 
-  if [ -n "$RETENTION_DAYS" ]; then
-    # PURGE_DIR is already set above based on OLD_LOGS_DIR
-    if $DRY_RUN; then
-      echo "[DRY-RUN] Would delete files older than $RETENTION_DAYS days in $PURGE_DIR"
-    else
-      find "$PURGE_DIR" -type f -name "*.gz" -mtime +$RETENTION_DAYS -exec rm -f {} \;
-      echo "$(date): Purged logs older than $RETENTION_DAYS days in $PURGE_DIR"
-    fi
+  ts=$(get_timestamp)
+  dest_dir="$parent/old_logs/$(date +"$DATE_ONLY_FORMAT")"
+  tmp_file="$dest_dir/${base}.${ts}"
+  archive="$tmp_file.gz"
+
+  # Prepare directory
+  if ! $DRY_RUN; then mkdir -p "$dest_dir"; fi
+
+  # Skip if archive exists
+  if [[ -f "$archive" ]]; then echo "Already rotated: $file"; return; fi
+
+  if $DRY_RUN; then
+    echo "[DRY] Rotate: $file -> $archive"
+  else
+    # Snapshot and truncate
+    cp "$file" "$tmp_file"
+    : > "$file"
+    gzip "$tmp_file"
+    echo "Rotated: $file -> $archive"
   fi
 }
 
-export -f rotate_log_file
-export DATE_SUFFIX OLD_LOGS_DIR DRY_RUN RETENTION_DAYS
+# Export for parallel
+export -f rotate_file get_timestamp
+export DRY_RUN TIMESTAMP_FORMAT DATE_ONLY_FORMAT USE_DATE_ONLY
 
-if $PARALLEL; then
-  echo "$LOG_FILES" | xargs -r -n 1 -P $PARALLEL_JOBS bash -c 'rotate_log_file "$0"'
+# Execute rotation
+if [[ "$PARALLEL" == true ]]; then
+  printf "%s\n" "${LOG_FILES[@]}" | xargs -P "$PARALLEL_JOBS" -n1 bash -c 'rotate_file "$0"'
 else
-  for LOG_FILE in $LOG_FILES; do
-    rotate_log_file "$LOG_FILE"
-  done
+  for file in "${LOG_FILES[@]}"; do rotate_file "$file"; done
 fi
+
 
