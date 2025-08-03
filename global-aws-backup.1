@@ -1,0 +1,29 @@
+.TH global-aws-backup 1 "July 2025" "1.0.0" "User Commands"
+.SH NAME
+global-aws-backup \- move old files to AWS S3 with parallel support
+.SH SYNOPSIS
+.B global-aws-backup
+--source <path> --destination <s3://bucket> --days <N> [--parallel [N]] [--profile <profile>] [--region <region>]
+.SH DESCRIPTION
+Moves files older than N days from the source to the specified AWS S3 bucket, supporting parallel processing.
+.SH OPTIONS
+.TP
+.B --source <path>
+Source directory to scan for files.
+.TP
+.B --destination <s3://bucket>
+Destination S3 bucket.
+.TP
+.B --days <N>
+Move files older than N days.
+.TP
+.B --parallel [N]
+Move files in parallel (default: 4 jobs).
+.TP
+.B --profile <profile>
+AWS CLI profile to use.
+.TP
+.B --region <region>
+AWS region to use.
+.SH AUTHOR
+Rushikesh Sakharle 

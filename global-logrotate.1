@@ -1,0 +1,35 @@
+.TH global-logrotate 1 "July 2025" "1.0.0" "User Commands"
+.SH NAME
+global-logrotate \- rotate and compress log files with parallel support
+.SH SYNOPSIS
+.B global-logrotate
+[\-H] [\-D] [\-p /path/to/logs] [\-f file_pattern] [\-r days] [\-n] [\-o /path/to/old_logs] [\-\-parallel N]
+.SH DESCRIPTION
+Rotates and compresses log files, supporting parallel processing.
+.SH OPTIONS
+.TP
+.B \-H
+Use full timestamp format (YYYYMMDDTHH:MM:SS)
+.TP
+.B \-D
+Use date-only format (YYYYMMDD)
+.TP
+.B \-p <path>
+Specify custom log directory (default: /var/log/apps)
+.TP
+.B \-f <pattern>
+File pattern to rotate (default: *.log)
+.TP
+.B \-r <days>
+Purge rotated logs older than <days>
+.TP
+.B \-n
+Dry-run mode (no changes made)
+.TP
+.B \-o <path>
+Specify old_logs directory (default: <logdir>/old_logs)
+.TP
+.B \-\-parallel N
+Rotate up to N log files in parallel (default: 4)
+.SH AUTHOR
+Rushikesh Sakharle 

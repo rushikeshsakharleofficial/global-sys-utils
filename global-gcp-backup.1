@@ -1,0 +1,23 @@
+.TH global-gcp-backup 1 "July 2025" "1.0.0" "User Commands"
+.SH NAME
+global-gcp-backup \- move old files to Google Cloud Storage with parallel support
+.SH SYNOPSIS
+.B global-gcp-backup
+--source <path> --destination <gs://bucket> --days <N> [--parallel [N]]
+.SH DESCRIPTION
+Moves files older than N days from the source to the specified Google Cloud Storage bucket, supporting parallel processing.
+.SH OPTIONS
+.TP
+.B --source <path>
+Source directory to scan for files.
+.TP
+.B --destination <gs://bucket>
+Destination GCS bucket.
+.TP
+.B --days <N>
+Move files older than N days.
+.TP
+.B --parallel [N]
+Move files in parallel (default: 4 jobs).
+.SH AUTHOR
+Rushikesh Sakharle 

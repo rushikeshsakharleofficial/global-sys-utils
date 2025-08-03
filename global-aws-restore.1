@@ -1,0 +1,32 @@
+.TH global-aws-restore 1 "July 2025" "1.0.0" "User Commands"
+.SH NAME
+global-aws-restore \- restore/download log files from AWS S3 with filtering and parallel support
+.SH SYNOPSIS
+.B global-aws-restore.sh
+[\-\-source <s3://bucket>] [\-\-destination <path>] [\-\-days <N>] [\-\-pattern <glob>] [\-\-parallel N] [\-\-profile <profile>] [\-\-region <region>]
+.SH DESCRIPTION
+Downloads log files from an AWS S3 bucket to a local directory, filtering by date pattern in the filename and optional glob pattern, preserving full path, and supporting parallel downloads.
+.SH OPTIONS
+.TP
+.B \-\-source <s3://bucket>
+Source S3 bucket to restore from (e.g., s3://my-bucket)
+.TP
+.B \-\-destination <path>
+Local directory to restore files into
+.TP
+.B \-\-days <N>
+Only restore files older than N days (based on date in filename)
+.TP
+.B \-\-pattern <glob>
+Optional glob pattern to filter files (e.g., redis*202504*)
+.TP
+.B \-\-parallel N
+Restore up to N files in parallel (default: 4)
+.TP
+.B \-\-profile <profile>
+AWS CLI profile to use
+.TP
+.B \-\-region <region>
+AWS region to use
+.SH AUTHOR
+Rushikesh Sakharle 
