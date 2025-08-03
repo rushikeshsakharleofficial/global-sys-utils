@@ -1,0 +1,35 @@
+Name:           global-sys-utils
+Version:        1.0.0
+Release:        1%{?dist}
+Summary:        System utilities for log rotation and cloud backups
+License:        MIT
+URL:            https://github.com/rushikeshsakharleofficial/global-sys-utils
+BuildArch:      noarch
+Requires:       bash
+Requires:       findutils
+Requires:       gzip
+
+%description
+Collection of system utilities including log rotation and cloud backup tools.
+
+%prep
+%setup -q
+
+%install
+mkdir -p %{buildroot}%{_bindir}
+install -m 755 global-logrotate %{buildroot}%{_bindir}/
+install -m 755 global-aws-backup %{buildroot}%{_bindir}/
+install -m 755 global-aws-restore %{buildroot}%{_bindir}/
+install -m 755 global-gcp-backup %{buildroot}%{_bindir}/
+install -m 755 global-gcp-restore %{buildroot}%{_bindir}/
+
+%files
+%{_bindir}/global-logrotate
+%{_bindir}/global-aws-backup
+%{_bindir}/global-aws-restore
+%{_bindir}/global-gcp-backup
+%{_bindir}/global-gcp-restore
+
+%changelog
+* Fri Aug 2 2025 Rushikesh Sakharle <rishiananya123@gmail.com> - 1.0.0-1
+- Initial package release
