@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 
 source /etc/bashrc
-
 set -euo pipefail
-
-
 
 # Required commands
 REQUIRED_CMDS=(find awk gzip date mkdir basename xargs cp)
@@ -23,8 +20,8 @@ check_commands() {
 }
 check_commands
 
-# Default settings
-LOG_DIR="/var/log/apps"
+# Initialize variables
+LOG_DIR=""
 PATTERN="*.log"
 DRY_RUN=false
 PARALLEL=false
@@ -35,25 +32,33 @@ USE_DATE_ONLY=false
 
 usage() {
   cat <<EOF
-Usage: $0 [options]
+Usage: $0 -p <log_directory> [--pattern <glob>] [options]
+Required:
+  -p <dir>          Base log directory
+Optional:
+  --pattern <glob>  File pattern to rotate (default: *.log)
+Options:
   -H                Use full timestamp (YYYYMMDDTHH:MM:SS)
   -D                Use date-only stamp (YYYYMMDD)
-  --pattern <glob>  File pattern (default: *.log)
-  -p <dir>          Base log directory (default: /var/log/apps)
-  -n                Dry-run
-  --parallel [N]    Rotate in parallel (optional N jobs)
-  -h                Show help
+  -n                Dry-run mode
+  --parallel [N]    Rotate in parallel (N jobs, default: 4)
+  -h                Show this help message
 EOF
   exit 1
 }
 
+# Show help if no arguments
+if [[ $# -eq 0 ]]; then
+  usage
+fi
+
 # Parse options
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -p) LOG_DIR="$2"; shift 2;;
+    --pattern) PATTERN="$2"; shift 2;;
     -H) USE_DATE_ONLY=false; shift;;
     -D) USE_DATE_ONLY=true; shift;;
-    --pattern) PATTERN="$2"; shift 2;;
-    -p) LOG_DIR="$2"; shift 2;;
     -n) DRY_RUN=true; shift;;
     --parallel)
       PARALLEL=true
@@ -63,9 +68,15 @@ while [[ $# -gt 0 ]]; do
         shift
       fi;;
     -h|--help) usage;;
-    *) usage;;
+    *) echo "Error: Unknown option: $1" >&2; usage;;
   esac
 done
+
+# Validate required argument LOG_DIR
+if [[ -z "$LOG_DIR" ]]; then
+  echo "Error: -p <log_directory> is required." >&2
+  usage
+fi
 
 # Function to get timestamp
 get_timestamp() {
@@ -97,7 +108,7 @@ rotate_file() {
   parent=$(dirname "$file")
   base=$(basename "$file")
 
-  # Skip if already compressed
+  # Skip compressed files
   if [[ "$base" == *.gz ]]; then
     echo "Skipping already compressed file: $file"
     return
@@ -108,16 +119,20 @@ rotate_file() {
   tmp_file="$dest_dir/${base}.${ts}"
   archive="$tmp_file.gz"
 
-  # Prepare directory
-  if ! $DRY_RUN; then mkdir -p "$dest_dir"; fi
+  # Create dest directory
+  if ! $DRY_RUN; then
+    mkdir -p "$dest_dir"
+  fi
 
   # Skip if archive exists
-  if [[ -f "$archive" ]]; then echo "Already rotated: $file"; return; fi
+  if [[ -f "$archive" ]]; then
+    echo "Already rotated: $file"
+    return
+  fi
 
   if $DRY_RUN; then
     echo "[DRY] Rotate: $file -> $archive"
   else
-    # Snapshot and truncate
     cp "$file" "$tmp_file"
     : > "$file"
     gzip "$tmp_file"
@@ -133,7 +148,8 @@ export DRY_RUN TIMESTAMP_FORMAT DATE_ONLY_FORMAT USE_DATE_ONLY
 if [[ "$PARALLEL" == true ]]; then
   printf "%s\n" "${LOG_FILES[@]}" | xargs -P "$PARALLEL_JOBS" -n1 bash -c 'rotate_file "$0"'
 else
-  for file in "${LOG_FILES[@]}"; do rotate_file "$file"; done
+  for file in "${LOG_FILES[@]}"; do
+    rotate_file "$file"
+  done
 fi
-
 
