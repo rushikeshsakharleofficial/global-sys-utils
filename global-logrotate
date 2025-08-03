@@ -1,5 +1,7 @@
 #!/usr/bin/bash
 
+source /etc/bashrc
+
 REQUIRED_CMDS=("find" "awk" "gzip" "cp" "mv" "date" "mkdir" "basename" "xargs")
 
 check_commands() {

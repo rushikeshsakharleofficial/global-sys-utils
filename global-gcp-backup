@@ -4,6 +4,8 @@
 
 set -e
 
+source /etc/bashrc
+
 PARALLEL=false
 PARALLEL_JOBS=4
 

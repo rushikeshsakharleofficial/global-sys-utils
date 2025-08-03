@@ -4,6 +4,8 @@
 
 set -e
 
+source /etc/bashrc
+
 show_help() {
   echo "Usage: $0 --source <s3://bucket> --destination <path> [--pattern <glob>] [--parallel [N]] [--profile <profile>] [--region <region>] [--list-files]"
   echo ""

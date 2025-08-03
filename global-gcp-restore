@@ -4,6 +4,8 @@
 
 set -e
 
+source /etc/bashrc
+
 show_help() {
   echo "Usage: $0 --source <gs://bucket> --destination <path> [--pattern <glob>] [--parallel [N]] [--list-files]"
   echo ""
