@@ -1,131 +1,170 @@
-#!/usr/bin/env bash
-set -euo pipefail
-IFS=$'\n\t'
+#!/usr/bin/bash
 
-# Defaults
-LOG_DIR=""
-FILE_PATTERN="*.log"
+REQUIRED_CMDS=("find" "awk" "gzip" "cp" "mv" "date" "mkdir" "basename" "xargs")
+
+check_commands() {
+  local missing=()
+  for cmd in "${REQUIRED_CMDS[@]}"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing+=("$cmd")
+    fi
+[root@smtp20 ~]# cat /bin/global-logrotate
+#!/usr/bin/bash
+
+REQUIRED_CMDS=("find" "awk" "gzip" "cp" "mv" "date" "mkdir" "basename" "xargs")
+
+check_commands() {
+  local missing=()
+  for cmd in "${REQUIRED_CMDS[@]}"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing+=("$cmd")
+    fi
+  done
+
+  if [ ${#missing[@]} -ne 0 ]; then
+    echo "Error: The following required command(s) are missing: ${missing[*]}"
+    exit 1
+  fi
+}
+
+check_commands
+
+LOG_DIR="/var/log/apps"
+DATE_SUFFIX=""
+PATTERN="*.log"
+CUSTOM_PATH_USED=false
+RETENTION_DAYS=""
 DRY_RUN=false
-PARALLEL=4
-DEST_DIR=""           # optional
+OLD_LOGS_DIR=""
+PARALLEL=false
+PARALLEL_JOBS=4
 
-# Timestamp flags
-USE_FULL_TIMESTAMP=false
-USE_DATE_ONLY=false
-
-FULL_TIMESTAMP_FORMAT="%Y%m%dT%H:%M:%S"
-DATE_ONLY_FORMAT="%Y%m%d"
-
-usage() {
-  cat <<EOF
-Usage: $0 -H|-D -p <log_dir> [-o <dest_dir>] [options]
-
-Required (choose one):
-  -H                Full timestamp (YYYYMMDDTHH:MM:SS)
-  -D                Date-only format (YYYYMMDD)
-
-Required:
-  -p <dir>          Directory containing log files
-
-Optional:
-  -o <dir>          Global destination root (default: file's own parent/old_logs)
-  -f <pattern>      File pattern (default: *.log)
-  -n                Dry-run (just print, no changes)
-  --parallel <N>    Parallel jobs (default: 4)
-  -h, --help        Show this help
-EOF
+show_help() {
+  echo "Usage: $0 [-H] [-D] [--pattern <glob>] [-p /path/to/logs] [-r days] [-n] [-o /path/to/old_logs] [--parallel N]"
+  echo ""
+  echo "Options:"
+  echo "  -H                Use full timestamp format (YYYYMMDDTHH:MM:SS)"
+  echo "  -D                Use date-only format (YYYYMMDD)"
+  echo "  --pattern <glob>  File pattern to rotate (default: *.log)"
+  echo "  -p <path>         Specify custom log directory (default: /var/log/apps)"
+  echo "  -r <days>         Purge rotated logs older than <days>"
+  echo "  -n                Dry-run mode (no changes made)"
+  echo "  -o <path>         Specify old_logs directory (default: <logdir>/old_logs)"
+  echo "  --parallel N      Rotate up to N log files in parallel (default: 4)"
+  echo ""
   exit 1
 }
 
-# Parse args
-while (( $# )); do
-  case $1 in
-    -H) USE_FULL_TIMESTAMP=true; shift ;;
-    -D) USE_DATE_ONLY=true;    shift ;;
-    -p) LOG_DIR="$2";          shift 2 ;;
-    -o) DEST_DIR="$2";         shift 2 ;;
-    -f) FILE_PATTERN="$2";     shift 2 ;;
-    -n) DRY_RUN=true;          shift ;;
-    --parallel) PARALLEL="$2"; shift 2 ;;
-    -h|--help) usage ;;
-    *) echo "Unknown option: $1"; usage ;;
+# Show help if no arguments are provided or all arguments are empty/whitespace
+if [ $# -eq 0 ] || [[ -z "${*// }" ]]; then
+  show_help
+fi
+
+# Parse short and long options
+ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -H) DATE_SUFFIX=$(date +%Y%m%dT%H:%M:%S); shift ;;
+    -D) DATE_SUFFIX=$(date +%Y%m%d); shift ;;
+    --pattern)
+      PATTERN="$2"; shift 2 ;;
+    -p) LOG_DIR="$2"; CUSTOM_PATH_USED=true; shift 2 ;;
+    -r) RETENTION_DAYS="$2"; shift 2 ;;
+    -n) DRY_RUN=true; shift ;;
+    -o) OLD_LOGS_DIR="$2"; shift 2 ;;
+    --parallel)
+      PARALLEL=true
+      if [[ -n $2 && $2 =~ ^[0-9]+$ ]]; then
+        PARALLEL_JOBS=$2
+        shift 2
+      else
+        shift 1
+      fi
+      ;;
+    -h|--help) show_help ;;
+    --) shift; break ;;
+    -*) show_help ;;
+    *) ARGS+=("$1"); shift ;;
   esac
 done
+set -- "${ARGS[@]}"
 
-# Validate flags
-if $USE_FULL_TIMESTAMP && $USE_DATE_ONLY; then
-  echo "Error: Cannot use both -H and -D" >&2; usage
-fi
-if ! $USE_FULL_TIMESTAMP && ! $USE_DATE_ONLY; then
-  echo "Error: Must specify either -H or -D" >&2; usage
-fi
-if [[ -z "$LOG_DIR" ]]; then
-  echo "Error: -p <log_dir> is required" >&2; usage
+if $CUSTOM_PATH_USED && [ ! -d "$LOG_DIR" ]; then
+  echo "Error: Custom log path '$LOG_DIR' does not exist."
+  exit 1
 fi
 
-# Normalize and check LOG_DIR
+if [ -z "$DATE_SUFFIX" ]; then
+  DATE_SUFFIX=$(date +%Y%m%d)
+fi
+
+# Remove trailing slash if present
 LOG_DIR="${LOG_DIR%/}"
-if [[ ! -d "$LOG_DIR" ]]; then
-  echo "Error: Log directory not found: $LOG_DIR" >&2; exit 1
+if [ -z "$OLD_LOGS_DIR" ]; then
+  OLD_LOGS_DIR="${LOG_DIR}/old_logs"
 fi
+# Remove trailing slash if present
+OLD_LOGS_DIR="${OLD_LOGS_DIR%/}"
+BACKUP_DIR="$OLD_LOGS_DIR/$(date +%Y%m%d)"
 
-# Determine timestamp
-if $USE_FULL_TIMESTAMP; then
-  TS_FMT="$FULL_TIMESTAMP_FORMAT"
-else
-  TS_FMT="$DATE_ONLY_FORMAT"
-fi
-TIMESTAMP="$(date +"$TS_FMT")"
+LOG_FILES=$(find "$LOG_DIR" -type f -name "$PATTERN" -printf "%s %p\n" 2>/dev/null | sort -n | awk '{print $2}')
 
-# Collect files
-mapfile -t LOG_FILES < <(
-  find "$LOG_DIR" -maxdepth 1 -type f -name "$FILE_PATTERN" -size +0c 2>/dev/null
-)
-
-if ((${#LOG_FILES[@]} == 0)); then
-  echo "No log files matching '$FILE_PATTERN' in $LOG_DIR"
+if [ -z "$LOG_FILES" ]; then
+  echo "No files matching pattern '$PATTERN' found in $LOG_DIR"
   exit 0
 fi
 
-# Rotate function
-rotate_file() {
-  local file="$1"
-  local parent base out_root final_dest dest
+rotate_log_file() {
+  LOG_FILE="$1"
+  if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
+    ROTATED_BASENAME="$(basename "$LOG_FILE").${DATE_SUFFIX}"
+    LOG_PARENT="$(dirname "$LOG_FILE")"
+    # Use custom OLD_LOGS_DIR if specified, else default to LOG_PARENT/old_logs
+    if [ -n "$OLD_LOGS_DIR" ]; then
+      BACKUP_DIR="$OLD_LOGS_DIR/$(date +%Y%m%d)"
+      PURGE_DIR="$OLD_LOGS_DIR"
+    else
+      BACKUP_DIR="$LOG_PARENT/old_logs/$(date +%Y%m%d)"
+      PURGE_DIR="$LOG_PARENT/old_logs"
+    fi
+    ARCHIVED_FILE="$BACKUP_DIR/${ROTATED_BASENAME}.gz"
 
-  parent=$(dirname "$file")
-  base=$(basename "$file")
+    if [ -f "$ARCHIVED_FILE" ]; then
+      echo "$(date): Already rotated, skipping: $LOG_FILE"
+      return
+    fi
 
-  # Decide root of destination
-  if [[ -n "$DEST_DIR" ]]; then
-    out_root="$DEST_DIR"
+    if $DRY_RUN; then
+      echo "[DRY-RUN] Would Rotate: ${LOG_FILE} -> $ARCHIVED_FILE"
+    else
+      mkdir -p "$BACKUP_DIR"
+      cp "$LOG_FILE" "$BACKUP_DIR/${ROTATED_BASENAME}"
+      > "$LOG_FILE"
+      gzip "$BACKUP_DIR/${ROTATED_BASENAME}"
+      echo "$(date): Rotated: $LOG_FILE -> $ARCHIVED_FILE"
+    fi
   else
-    out_root="$parent/old_logs"
+    echo "$(date): Skipping empty or missing file: $LOG_FILE"
   fi
 
-  final_dest="$out_root/$TIMESTAMP"
-  if ! $DRY_RUN; then
-    mkdir -p "$final_dest"
-  fi
-
-  dest="$final_dest/${base}.${TIMESTAMP}.gz"
-
-  if $DRY_RUN; then
-    echo "[DRY] $file → $dest"
-  else
-    gzip -c "$file" > "$dest" && : > "$file"
-    echo "Rotated: $file → $dest"
+  if [ -n "$RETENTION_DAYS" ]; then
+    # PURGE_DIR is already set above based on OLD_LOGS_DIR
+    if $DRY_RUN; then
+      echo "[DRY-RUN] Would delete files older than $RETENTION_DAYS days in $PURGE_DIR"
+    else
+      find "$PURGE_DIR" -type f -name "*.gz" -mtime +$RETENTION_DAYS -exec rm -f {} \;
+      echo "$(date): Purged logs older than $RETENTION_DAYS days in $PURGE_DIR"
+    fi
   fi
 }
 
-export -f rotate_file
-export TIMESTAMP DEST_DIR DRY_RUN
+export -f rotate_log_file
+export DATE_SUFFIX OLD_LOGS_DIR DRY_RUN RETENTION_DAYS
 
-# Dispatch
-if (( PARALLEL > 1 )); then
-  printf '%s\n' "${LOG_FILES[@]}" \
-    | xargs -r -n1 -P "$PARALLEL" bash -c 'rotate_file "$0"' 
+if $PARALLEL; then
+  echo "$LOG_FILES" | xargs -r -n 1 -P $PARALLEL_JOBS bash -c 'rotate_log_file "$0"'
 else
-  for f in "${LOG_FILES[@]}"; do
-    rotate_file "$f"
+  for LOG_FILE in $LOG_FILES; do
+    rotate_log_file "$LOG_FILE"
   done
 fi
