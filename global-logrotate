@@ -159,3 +159,4 @@ else
     rotate_log_file "$LOG_FILE"
   done
 fi
+
