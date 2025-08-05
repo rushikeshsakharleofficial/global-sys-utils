@@ -1,5 +1,5 @@
 Name:           global-sys-utils
-Version:        1.0.10
+Version:        1.0.11
 Release:        1%{?dist}
 Summary:        System utilities for log rotation and cloud backup
 License:        MIT
@@ -10,15 +10,19 @@ AutoReqProv:    no
 Requires:       findutils
 Requires:       gzip
 
+# Avoid rpmlib dependencies by forcing gzip and disabling build-id links
+%define _binary_payload w9.gzdio
+%define _source_payload w9.gzdio
+%define _build_id_links none
+
 %description
-A collection of scripts for log rotation, backup, and restore operations 
-supporting AWS S3 and Google Cloud Storage, with parallel and pattern 
+A collection of scripts for log rotation, backup, and restore operations
+supporting AWS S3 and Google Cloud Storage, with parallel and pattern
 filtering support.
 
 %prep
 # Create directory structure
 mkdir -p %{_builddir}/bin
-mkdir -p %{_builddir}/man/man1
 
 # Copy scripts to build directory
 cp %{_sourcedir}/global-logrotate %{_builddir}/bin/
@@ -30,7 +34,6 @@ cp %{_sourcedir}/global-gcp-restore %{_builddir}/bin/
 %install
 rm -rf %{buildroot}
 mkdir -p %{buildroot}/bin
-mkdir -p %{buildroot}%{_mandir}/man1
 
 # Install scripts
 install -m 755 %{_builddir}/bin/global-logrotate %{buildroot}/bin/global-logrotate
@@ -48,9 +51,8 @@ install -m 755 %{_builddir}/bin/global-gcp-restore %{buildroot}/bin/global-gcp-r
 /bin/global-gcp-restore
 
 %changelog
-* Sat Aug 03 2025 Rushikesh Sakharle <rishiananya123@gmail.com> - 1.0.10-1
-- Removed man pages from installation
-- Updated file paths and build process
-- Added only essential dependencies (findutils, gzip)
-- Updated log rotation with improved parallel processing
-- Enhanced error handling and reporting
+* Tue Aug 05 2025 Rushikesh Sakharle <rishiananya123@gmail.com> - 1.0.11-1
+- Updated version to 1.0.11
+- Removed unused man page directories
+- Disabled rpmlib dependencies by enforcing gzip payload
+- Cleaned up unnecessary build artifacts
