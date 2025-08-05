@@ -60,7 +60,6 @@ rpm -ivh RPMS/noarch/global-sys-utils-1.0.10-1.el9.noarch.rpm
 ```
 2025-08-03: Rotated: /var/log/myapp/app.log -> /var/log/myapp/old_logs/20250803/app.log.20250803.gz
 2025-08-03: Rotated: /var/log/myapp/error.log -> /var/log/myapp/old_logs/20250803/error.log.20250803.gz
-2025-08-03: Purged logs older than 30 days in /var/log/myapp/old_logs
 ```
 
 ### 🌥️ AWS Backup
