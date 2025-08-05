@@ -46,7 +46,6 @@ rpm -ivh RPMS/noarch/global-sys-utils-1.0.10-1.el9.noarch.rpm
 -D                Use date-only format (YYYYMMDD)
 --pattern <glob>  File pattern to rotate (default: *.log)
 -p <path>         Specify custom log directory (default: /var/log/apps)
--r <days>         Purge rotated logs older than <days>
 -n                Dry-run mode (no changes made)
 -o <path>         Specify old_logs directory (default: <logdir>/old_logs)
 --parallel N      Rotate up to N log files in parallel (default: 4)
@@ -54,7 +53,7 @@ rpm -ivh RPMS/noarch/global-sys-utils-1.0.10-1.el9.noarch.rpm
 
 **Example:**
 ```bash
-/bin/global-logrotate -D --pattern "*.log" -p /var/log/myapp -r 30 --parallel 4
+/bin/global-logrotate -D --pattern "*.log" -p /var/log/myapp --parallel 4
 ```
 
 **Output:**
