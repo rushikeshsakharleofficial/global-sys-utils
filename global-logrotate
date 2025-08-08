@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 source /etc/bashrc
 
-REQUIRED_CMDS=("find" "awk" "gzip" "cp" "mv" "date" "mkdir" "basename" "xargs")
+REQUIRED_CMDS=("find" "awk" "gzip" "cp" "mv" "date" "mkdir" "basename" "xargs" "stat")
 
 check_commands() {
   local missing=()
@@ -27,9 +27,10 @@ DRY_RUN=false
 OLD_LOGS_DIR=""
 PARALLEL=false
 PARALLEL_JOBS=4
+EXCLUDE_FILE=""
 
 show_help() {
-  echo "Usage: $0 [-H] [-D] [--pattern <glob>] [-p /path/to/logs] [-n] [-o /path/to/old_logs] [--parallel N]"
+  echo "Usage: $0 [-H] [-D] [--pattern <glob>] [-p /path/to/logs] [-n] [-o /path/to/old_logs] [--parallel N] [--exclude-from file]"
   echo ""
   echo "Options:"
   echo "  -H                Use full timestamp format (YYYYMMDDTHH:MM:SS)"
@@ -37,6 +38,7 @@ show_help() {
   echo "  --pattern <glob>  File pattern to rotate (default: *.log)"
   echo "  -p <path>         Specify custom log directory (default: /var/log/apps)"
   echo "  -n                Dry-run mode (no changes made)"
+  echo "  --exclude-from    Path to file containing exclude patterns (supports wildcards and absolute paths)"
   echo "  -o <path>         Specify old_logs directory (default: <logdir>/old_logs)"
   echo "  --parallel N      Rotate up to N log files in parallel (default: 4)"
   echo ""
@@ -58,6 +60,15 @@ while [[ $# -gt 0 ]]; do
     -p) LOG_DIR="$2"; CUSTOM_PATH_USED=true; shift 2 ;;
     -n) DRY_RUN=true; shift ;;
     -o) OLD_LOGS_DIR="$2"; shift 2 ;;
+    --exclude-from)
+      if [[ -f "$2" ]]; then
+        EXCLUDE_FILE="$2"
+        shift 2
+      else
+        echo "Error: Exclude file '$2' does not exist."
+        exit 1
+      fi
+      ;;
     --parallel)
       PARALLEL=true
       if [[ -n $2 && $2 =~ ^[0-9]+$ ]]; then
@@ -86,7 +97,20 @@ fi
 
 LOG_DIR="${LOG_DIR%/}"
 
-LOG_FILES=$(find "$LOG_DIR" -type f -name "$PATTERN" -printf "%s %p\n" 2>/dev/null | sort -n | awk '{print $2}')
+EXCLUDE_ARGS=()
+if [[ -n "$EXCLUDE_FILE" ]]; then
+  echo "Excluding patterns from: $EXCLUDE_FILE"
+  while IFS= read -r exclude_pattern || [[ -n "$exclude_pattern" ]]; do
+    [[ -z "$exclude_pattern" ]] && continue  # skip empty lines
+    echo "  - $exclude_pattern"
+    EXCLUDE_ARGS+=(-not -path "$exclude_pattern")
+  done < "$EXCLUDE_FILE"
+fi
+
+# Get list of matching log files
+LOG_FILES=$(find "$LOG_DIR" -type f -name "$PATTERN" \
+  "${EXCLUDE_ARGS[@]}" \
+  -printf "%s %p\n" 2>/dev/null | sort -n | awk '{print $2}')
 
 if [ -z "$LOG_FILES" ]; then
   echo "No files matching pattern '$PATTERN' found in $LOG_DIR"

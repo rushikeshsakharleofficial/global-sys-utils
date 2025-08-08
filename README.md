@@ -9,6 +9,7 @@ A collection of scripts for log rotation, backup, and restore operations support
 - 🔄 **Restore Operations**: Easy restoration of backed up files
 - 🔍 **Pattern Filtering**: Selective backup/restore using pattern matching
 - ⚡ **Parallel Processing**: Improved performance through parallel operations
+- 🚫 **Exclusion Support**: Skip specified log files or patterns from rotation
 
 ## 📥 Installation
 
@@ -17,7 +18,7 @@ The package is available as an RPM for RHEL/CentOS 9:
 ```bash
 git clone https://github.com/rushikeshsakharleofficial/global-sys-utils.git
 cd global-sys-utils
-rpm -ivh RPMS/noarch/global-sys-utils-1.0.10-1.el9.noarch.rpm
+rpm -ivh RPMS/noarch/global-sys-utils-1.0.12-1.el9.noarch.rpm
 ```
 
 ## 🧩 Components
@@ -48,6 +49,7 @@ rpm -ivh RPMS/noarch/global-sys-utils-1.0.10-1.el9.noarch.rpm
 -p <path>         Specify custom log directory (default: /var/log/apps)
 -n                Dry-run mode (no changes made)
 -o <path>         Specify old_logs directory (default: <logdir>/old_logs)
+--exclude-from <file>  Read a list of file paths or patterns to exclude from rotation
 --parallel N      Rotate up to N log files in parallel (default: 4)
 ```
 
