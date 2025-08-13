@@ -103,7 +103,7 @@ if [[ -n "$EXCLUDE_FILE" ]]; then
   while IFS= read -r exclude_pattern || [[ -n "$exclude_pattern" ]]; do
     [[ -z "$exclude_pattern" ]] && continue  # skip empty lines
     echo "  - $exclude_pattern"
-    EXCLUDE_ARGS+=(-not -path "$exclude_pattern")
+    EXCLUDE_ARGS+=(-not -wholename "$exclude_pattern")
   done < "$EXCLUDE_FILE"
 fi
 
