@@ -99,7 +99,7 @@ move_file() {
     RELDIR="${DIR#/}"
     DEST_PATH="$DST/$HOSTNAME/$RELDIR/"
     echo "Moving $file to $DEST_PATH"
-    gsutil mv "$file" "$DEST_PATH"
+    gcloud storage mv "$file" "$DEST_PATH"
   fi
 }
 
