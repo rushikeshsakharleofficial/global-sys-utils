@@ -2,7 +2,7 @@
 
 # Usage: ./global-aws-backup.sh --source <path> --destination <s3://bucket> --days <N> [--parallel [N]] [--profile <profile>] [--region <region>]
 
-set -e
+# set -e
 
 source /etc/bashrc
 
