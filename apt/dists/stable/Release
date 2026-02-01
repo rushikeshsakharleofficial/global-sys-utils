@@ -1,0 +1,17 @@
+Origin: global-sys-utils
+Label: global-sys-utils
+Suite: stable
+Codename: stable
+Architectures: amd64 arm64
+Components: main
+Description: Global Sys Utils Package Repository
+MD5Sum:
+ 58f044a1c6aa10379434a535de0a8604 1013 main/binary-amd64/Packages
+ 578ca9bf8c4d942d5dcc251285376ae1 638 main/binary-amd64/Packages.gz
+ f4b7e3527b9e3d28d4b2fa373ee3677d 1013 main/binary-arm64/Packages
+ af545068d02428b5fcb7c99ed7f2d26a 638 main/binary-arm64/Packages.gz
+SHA256:
+ 8183b800a89e644443ce228e8d52aa46bb642374af04f2401e8f6f022cf77cc5 1013 main/binary-amd64/Packages
+ bc3b663db878d94caeb8fc2ea76160d8181cab1bdcad828bbc02d12af0bebb42 638 main/binary-amd64/Packages.gz
+ cc9578eb9536528882fc9a172d39d1a951c49b9190898d99681c7281d77db93f 1013 main/binary-arm64/Packages
+ cea94d93d7515ae0d30bbe7c92a798b1dcdae9d1d811649c0f98533fb374019d 638 main/binary-arm64/Packages.gz

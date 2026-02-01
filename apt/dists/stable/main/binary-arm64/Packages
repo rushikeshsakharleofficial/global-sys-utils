@@ -1,0 +1,27 @@
+Package: global-logrotate
+Version: 2.1.15
+Architecture: arm64
+Maintainer: Rushikesh Sakharle <rushikesh.sakharle@linuxhardened.com>
+Recommends: bash-completion
+Suggests: zsh
+Filename: pool/main/global-logrotate_2.1.15-1_arm64.deb
+Size: 785484
+MD5sum: a6da91ffc0d06e477d08488d214d1fa5
+SHA1: e61f20a8152a361ef5e1131e91f9a2fd4a1c8564
+SHA256: 7dfc0e25d883b552363108bf4af379056407e197123c0902f46f6e0c770f385a
+Section: admin
+Priority: optional
+Homepage: https://github.com/rushikeshsakharleofficial/global-sys-utils
+Description: Fast parallel log rotation utility
+ global-logrotate is a high-performance log rotation utility written in Go.
+ It finds log files matching a specified pattern, copies them to a backup
+ directory with a date suffix, compresses them using gzip, and truncates
+ the original files. It preserves file ownership and permissions.
+ .
+ Features:
+  - Parallel log file processing
+  - Configurable file patterns
+  - Exclude file support
+  - Dry-run mode
+  - Preserves file permissions and ownership
+

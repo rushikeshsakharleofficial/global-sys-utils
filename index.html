@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Global Sys Utils - Package Repository</title>
+    <style>
+        body { font-family: monospace; max-width: 900px; margin: 40px auto; padding: 20px; background: #1a1a1a; color: #f0f0f0; }
+        h1 { color: #4CAF50; }
+        h2 { color: #2196F3; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        code { background: #2d2d2d; padding: 2px 8px; border-radius: 4px; }
+        pre { background: #2d2d2d; padding: 15px; border-radius: 8px; overflow-x: auto; }
+        a { color: #4CAF50; }
+    </style>
+</head>
+<body>
+    <h1>Global Sys Utils - Package Repository</h1>
+    <p>High-performance system utilities by <a href="mailto:rushikesh.sakharle@linuxhardened.com">Rushikesh Sakharle</a></p>
+    
+    <h2>Available Packages</h2>
+    <ul>
+        <li><strong>global-logrotate v2.1.15</strong> - Fast parallel log rotation with AES-256 encryption</li>
+    </ul>
+
+    <h2>APT Repository (Debian/Ubuntu)</h2>
+    <pre>
+# Add repository
+echo "deb [trusted=yes] https://rushikeshsakharleofficial.github.io/global-sys-utils/apt stable main" | sudo tee /etc/apt/sources.list.d/global-sys-utils.list
+
+# Install
+sudo apt update
+sudo apt install global-logrotate
+    </pre>
+
+    <h2>YUM Repository (RHEL/CentOS/Fedora)</h2>
+    <pre>
+# Add repository
+sudo tee /etc/yum.repos.d/global-sys-utils.repo << 'REPO'
+[global-sys-utils]
+name=Global Sys Utils
+baseurl=https://rushikeshsakharleofficial.github.io/global-sys-utils/rpm/$basearch/
+enabled=1
+gpgcheck=0
+REPO
+
+# Install
+sudo yum install global-logrotate
+    </pre>
+
+    <h2>Direct Downloads</h2>
+    <h3>DEB Packages</h3>
+    <ul>
+        <li><a href="apt/pool/main/global-logrotate_2.1.15-1_amd64.deb">global-logrotate_2.1.15-1_amd64.deb</a></li>
+        <li><a href="apt/pool/main/global-logrotate_2.1.15-1_arm64.deb">global-logrotate_2.1.15-1_arm64.deb</a></li>
+    </ul>
+    <h3>RPM Packages</h3>
+    <ul>
+        <li><a href="rpm/x86_64/global-logrotate-2.1.15-1.x86_64.rpm">global-logrotate-2.1.15-1.x86_64.rpm</a></li>
+        <li><a href="rpm/aarch64/global-logrotate-2.1.15-1.aarch64.rpm">global-logrotate-2.1.15-1.aarch64.rpm</a></li>
+    </ul>
+
+    <h2>Source Code</h2>
+    <p><a href="https://github.com/rushikeshsakharleofficial/global-sys-utils/tree/v2.1.15">View on GitHub (v2.1.15 branch)</a></p>
+</body>
+</html>
