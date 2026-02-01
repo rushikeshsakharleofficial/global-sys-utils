@@ -1,0 +1,25 @@
+#compdef global-logrotate
+
+# zsh completion for global-logrotate
+
+_global_logrotate() {
+    _arguments -s \
+        '-H[Use full timestamp format (YYYYMMDDTHH:MM:SS)]' \
+        '-D[Use date-only format (YYYYMMDD)]' \
+        '-n[Dry-run mode (no changes made)]' \
+        '-p[Custom log directory]:directory:' \
+        '-o[Old logs backup directory]:directory:' \
+        '--pattern[File pattern to rotate]:pattern:(*.log *.txt *.out *.err *.log.* access.log error.log)' \
+        '--parallel[Rotate N files in parallel]:jobs:(1 2 4 8 16 32)' \
+        '--encrypt[Encrypt rotated logs with AES-256-GCM]' \
+        '--read[Read a rotated log file (.gz or .gz.enc)]:file:' \
+        '--pass-gen[Generate encryption password (first-time setup)]' \
+        '--pass-reset[Reset/change encryption password]' \
+        '--exclude-from[Path to exclude patterns file]:file:' \
+        '--log-file[Path to log file]:file:' \
+        '--log-level[Log level]:level:(error info debug)' \
+        '--version[Show version]' \
+        '-h[Show help]'
+}
+
+_global_logrotate "$@"

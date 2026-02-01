@@ -1,0 +1,316 @@
+.\" Manpage for global-logrotate
+.\" Contact: rushikesh.sakharle@linuxhardened.com
+.TH GLOBAL-LOGROTATE 1 "February 2026" "Version 2.1.15" "User Commands"
+
+.SH NAME
+global-logrotate \- fast parallel log rotation utility with encryption support
+
+.SH SYNOPSIS
+.B global-logrotate
+[\fIOPTIONS\fR]
+
+.SH DESCRIPTION
+.B global-logrotate
+is a high-performance log rotation utility written in Go with zero external
+dependencies. It finds log files matching a specified pattern, copies them to
+a backup directory with a date suffix, compresses them using gzip, and
+truncates the original files. It preserves file ownership and permissions.
+
+Features include parallel processing, AES-256-GCM encryption, per-user
+password management, and configurable logging.
+
+.SH OPTIONS
+.TP
+.BR \-H
+Use full timestamp format (YYYYMMDDTHH:MM:SS) for rotated file names.
+
+.TP
+.BR \-D
+Use date-only format (YYYYMMDD) for rotated file names. This is the default.
+
+.TP
+.BR \-\-pattern " " \fIglob\fR
+File pattern to match for rotation. Default is "*.log".
+
+.TP
+.BR \-p " " \fIpath\fR
+Specify custom log directory to search. Default is /var/log/apps.
+
+.TP
+.BR \-n
+Dry-run mode. Shows what would be done without making any changes.
+
+.TP
+.BR \-o " " \fIpath\fR
+Specify old_logs directory for storing rotated files. Default is
+<logdir>/old_logs.
+
+.TP
+.BR \-\-exclude\-from " " \fIfile\fR
+Path to a file containing exclude patterns (one per line). Supports wildcards
+and absolute paths. Lines starting with # are treated as comments.
+
+.TP
+.BR \-\-parallel " " \fIN\fR
+Rotate up to N log files in parallel. Default is 4.
+
+.TP
+.BR \-\-encrypt
+Encrypt rotated logs with AES-256-GCM. Requires password setup via --pass-gen.
+
+.TP
+.BR \-\-read " " \fIfile\fR
+Read and display a rotated log file (.gz or .gz.enc). Automatically handles
+decompression and decryption.
+
+.TP
+.BR \-\-pass\-gen
+Generate and configure encryption password. Required for first-time encryption
+setup. Each user must run this to configure their own password.
+
+.TP
+.BR \-\-pass\-reset
+Reset/change the encryption password. Requires current password verification.
+
+.TP
+.BR \-\-log\-file " " \fIpath\fR
+Path to application log file. Default is /var/log/global-sys-utils/global-logrotate.log.
+
+.TP
+.BR \-\-log\-level " " \fIlevel\fR
+Log level: error, info, or debug. Default is info.
+
+.TP
+.BR \-\-version
+Display version information and exit.
+
+.TP
+.BR \-h
+Display help message and exit.
+
+.SH ENCRYPTION
+.B global-logrotate
+uses AES-256-GCM encryption with PBKDF2 key derivation (100,000 iterations).
+Encrypted files have the .gz.enc extension.
+
+.SS First-Time Setup
+Before using encryption, each user must configure their password:
+.RS
+.nf
+global-logrotate --pass-gen
+.fi
+.RE
+
+This creates:
+.IP \(bu 2
+Password hash in /etc/global-sys-utils/global.conf.d/encryption.conf
+.IP \(bu 2
+Password in ~/.global-sys-utils/config/credentials.ini (chmod 600)
+
+.SS Password Priority
+Password is loaded from (in order):
+.IP 1. 4
+~/.global-sys-utils/config/credentials.ini (per-user)
+.IP 2. 4
+LOGROTATE_PASSWORD environment variable
+.IP 3. 4
+Interactive prompt (if no credentials file)
+
+.SS Reading Encrypted Files
+.RS
+.nf
+global-logrotate --read /path/to/file.gz.enc
+.fi
+.RE
+
+.SH CONFIGURATION FILES
+Configuration is loaded from the following files in order (later values override):
+.RS
+.IP \(bu 2
+/etc/global-sys-utils/global.conf
+.IP \(bu 2
+/etc/global-sys-utils/global.conf.d/*.conf (sorted alphabetically)
+.RE
+
+Command-line arguments override all configuration file values.
+
+.SS Configuration File Format
+Configuration files use a simple KEY = VALUE format:
+.RS
+.nf
+# Comment lines start with # or ;
+LOG_DIR = /var/log/apps
+PATTERN = *.log
+DATE_FORMAT = date
+OLD_LOGS_DIR = /backup/logs
+EXCLUDE_FILE = /etc/logrotate-exclude.conf
+PARALLEL_JOBS = 4
+DRY_RUN = false
+ENCRYPT = false
+LOG_FILE = /var/log/global-sys-utils/global-logrotate.log
+LOG_LEVEL = info
+.fi
+.RE
+
+.SS Configuration Options
+.TP
+.B LOG_DIR
+Default log directory to search. Default: /var/log/apps
+
+.TP
+.B PATTERN
+File pattern to match (glob syntax). Default: *.log
+
+.TP
+.B DATE_FORMAT
+Date format for rotated files: "date" (YYYYMMDD) or "full" (YYYYMMDDTHH:MM:SS).
+Default: date
+
+.TP
+.B OLD_LOGS_DIR
+Custom backup directory for rotated logs. If not set, uses <logdir>/old_logs.
+
+.TP
+.B EXCLUDE_FILE
+Path to exclude patterns file.
+
+.TP
+.B PARALLEL_JOBS
+Number of parallel jobs. Default: 4
+
+.TP
+.B DRY_RUN
+Enable dry-run mode by default (true/false/yes/no/1/0). Default: false
+
+.TP
+.B ENCRYPT
+Enable encryption by default (true/false). Default: false
+
+.TP
+.B LOG_FILE
+Path to application log file. Default: /var/log/global-sys-utils/global-logrotate.log
+
+.TP
+.B LOG_LEVEL
+Log level: error, info, or debug. Default: info
+
+.SH LOGGING
+Application logs are written to the configured log file with three levels:
+.TP
+.B error (0)
+Only errors
+.TP
+.B info (1)
+Errors and general information (default)
+.TP
+.B debug (2)
+All messages including debug details
+
+.SH EXAMPLES
+.TP
+Setup encryption password (required first):
+.B global-logrotate --pass-gen
+
+.TP
+Rotate logs with encryption:
+.B global-logrotate --encrypt -D -p /var/log/myapp
+
+.TP
+Read an encrypted log file:
+.B global-logrotate --read /var/log/myapp/old_logs/20260201/app.log.20260201.gz.enc
+
+.TP
+Rotate logs in default directory with date suffix:
+.B global-logrotate -D
+
+.TP
+Rotate logs with full timestamp:
+.B global-logrotate -H -p /var/log/myapp
+
+.TP
+Dry-run to see what would be rotated:
+.B global-logrotate -n -p /var/log/apps
+
+.TP
+Rotate text files with 8 parallel jobs:
+.B global-logrotate --pattern '*.txt' --parallel 8
+
+.TP
+Use custom backup directory:
+.B global-logrotate -D -p /var/log/apps -o /backup/logs
+
+.TP
+Rotate with debug logging:
+.B global-logrotate -D -p /var/log/apps --log-level debug
+
+.SH EXCLUDE FILE FORMAT
+The exclude file (used with --exclude-from) should contain one pattern per line.
+Patterns can be:
+.IP \(bu 2
+Glob patterns: *.debug, test-*.log
+.IP \(bu 2
+Full paths: /var/log/apps/system.log
+.IP \(bu 2
+Comments: lines starting with #
+
+.SH BACKUP STRUCTURE
+Rotated files are stored in the following structure:
+.RS
+<backup_root>/<YYYYMMDD>/<filename>.<date_suffix>.gz
+.RE
+
+With encryption enabled:
+.RS
+<backup_root>/<YYYYMMDD>/<filename>.<date_suffix>.gz.enc
+.RE
+
+For example:
+.RS
+/var/log/apps/old_logs/20260201/app.log.20260201.gz.enc
+.RE
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+Error (invalid path, encryption error, etc.)
+
+.SH FILES
+.TP
+.I /etc/global-sys-utils/global.conf
+Main configuration file
+
+.TP
+.I /etc/global-sys-utils/global.conf.d/*.conf
+Drop-in configuration files
+
+.TP
+.I /etc/global-sys-utils/global.conf.d/encryption.conf
+Encryption password hash (system-wide)
+
+.TP
+.I ~/.global-sys-utils/config/credentials.ini
+Per-user encryption password (chmod 600)
+
+.TP
+.I /var/log/global-sys-utils/global-logrotate.log
+Default application log file
+
+.TP
+.I /var/log/apps
+Default log directory
+
+.SH SEE ALSO
+.BR logrotate (8),
+.BR gzip (1)
+
+.SH BUGS
+Report bugs at https://github.com/rushikeshsakharleofficial/global-sys-utils/issues
+
+.SH AUTHOR
+Rushikesh Sakharle <rushikesh.sakharle@linuxhardened.com>
+
+.SH COPYRIGHT
+MIT License. This is free software; see the source for copying conditions.
