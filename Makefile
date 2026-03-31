@@ -9,6 +9,9 @@ NATIVE_GOARCH := $(shell go env GOARCH)
 # Supported architectures
 ARCHS := amd64 arm64
 
+# All binaries produced by this repo
+CMDS := global-logrotate global-aws-backup global-aws-restore global-gcp-backup global-gcp-restore
+
 BINARY := $(NAME)
 BUILDDIR := build
 RPMDIR := $(BUILDDIR)/rpm
@@ -18,23 +21,29 @@ DEBDIR := $(BUILDDIR)/deb
 
 all: build
 
-# Build for native architecture
+# Build all binaries for native architecture
 build:
-	@echo "Building $(NAME) v$(VERSION) for $(NATIVE_GOARCH)..."
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(NATIVE_GOARCH) go build -ldflags="-s -w" -o $(BUILDDIR)/$(BINARY)-$(NATIVE_GOARCH) ./cmd/global-logrotate
-	@ln -sf $(BINARY)-$(NATIVE_GOARCH) $(BUILDDIR)/$(BINARY)
+	@echo "Building all binaries v$(VERSION) for $(NATIVE_GOARCH)..."
+	@mkdir -p $(BUILDDIR)
+	@for cmd in $(CMDS); do \
+		echo "  Building $$cmd..."; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$(NATIVE_GOARCH) go build -ldflags="-s -w" -o $(BUILDDIR)/$$cmd-$(NATIVE_GOARCH) ./cmd/$$cmd; \
+		ln -sf $$cmd-$(NATIVE_GOARCH) $(BUILDDIR)/$$cmd; \
+	done
 
-# Build for all architectures
+# Build all binaries for all architectures
 build-all:
-	@echo "Building $(NAME) v$(VERSION) for all architectures..."
+	@echo "Building all binaries v$(VERSION) for all architectures..."
 	@mkdir -p $(BUILDDIR)
 	@for arch in $(ARCHS); do \
-		echo "  Building for $$arch..."; \
-		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -ldflags="-s -w" -o $(BUILDDIR)/$(BINARY)-$$arch ./cmd/global-logrotate; \
+		for cmd in $(CMDS); do \
+			echo "  Building $$cmd for $$arch..."; \
+			CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -ldflags="-s -w" -o $(BUILDDIR)/$$cmd-$$arch ./cmd/$$cmd; \
+		done; \
 	done
-	@ln -sf $(BINARY)-$(NATIVE_GOARCH) $(BUILDDIR)/$(BINARY)
+	@for cmd in $(CMDS); do ln -sf $$cmd-$(NATIVE_GOARCH) $(BUILDDIR)/$$cmd; done
 	@echo "Binaries built:"
-	@ls -lh $(BUILDDIR)/$(BINARY)-*
+	@ls -lh $(BUILDDIR)/global-*
 
 man:
 	@echo "Installing man page..."

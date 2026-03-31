@@ -138,8 +138,9 @@ Moving /var/log/apps/access-2025-07-01.log to gs://my-backup/logs/server1/var/lo
 ## ⚙️ Requirements
 
 - RHEL/CentOS 9 or compatible distribution
-- AWS CLI (for AWS operations)
-- Google Cloud SDK (for GCP operations)
+- Python 3.8+
+- `boto3` (for AWS operations): `pip install boto3`
+- `google-cloud-storage` (for GCP operations): `pip install google-cloud-storage`
 
 ## 📝 License
 

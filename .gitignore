@@ -5,6 +5,11 @@ build/
 *.so
 *.dylib
 
+# Vector DB / RAG files (devrag tooling, not part of this project)
+vectors.db
+config.json
+documents/
+
 # IDE
 .idea/
 .vscode/
