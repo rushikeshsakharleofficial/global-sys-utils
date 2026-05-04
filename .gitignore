@@ -22,6 +22,7 @@ documents/
 
 # Claude
 .claude/
+CLAUDE.md
 
 # AI tool configs and generated files
 .code-outline-graph/
