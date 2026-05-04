@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/rushikeshsakharleofficial/global-logrotate/pkg/cloudutil"
 	"github.com/rushikeshsakharleofficial/global-logrotate/pkg/gcpclient"
 )
 
@@ -36,38 +36,12 @@ Examples:
       --pattern "*.gz" --flatten --dry-run
 `
 
-func parseGCSURL(raw string) (bucket, prefix string, err error) {
-	if !strings.HasPrefix(raw, "gs://") {
-		return "", "", fmt.Errorf("invalid GCS URL %q: must start with gs://", raw)
-	}
-	rest := strings.TrimPrefix(raw, "gs://")
-	parts := strings.SplitN(rest, "/", 2)
-	bucket = parts[0]
-	if len(parts) == 2 {
-		prefix = strings.TrimRight(parts[1], "/")
-	}
-	return
-}
-
-func globMatch(name, pattern string) bool {
-	matched, _ := filepath.Match(pattern, name)
-	return matched
-}
-
-func localPath(blobName, prefix, dest string, flatten bool) string {
-	if flatten {
-		return filepath.Join(dest, filepath.Base(blobName))
-	}
-	relative := strings.TrimLeft(strings.TrimPrefix(blobName, prefix), "/")
-	return filepath.Join(dest, relative)
-}
-
 func main() {
 	var (
 		source      string
 		destination string
 		pattern     string
-		excludeList multiFlag
+		excludeList cloudutil.MultiFlag
 		parallel    int
 		project     string
 		credentials string
@@ -98,7 +72,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	bucket, prefix, err := parseGCSURL(source)
+	bucket, prefix, err := gcpclient.ParseGCSURL(source)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ERROR:", err)
 		os.Exit(1)
@@ -126,12 +100,12 @@ func main() {
 	var candidates []gcpclient.BlobInfo
 	for _, b := range blobs {
 		name := filepath.Base(b.Name)
-		if !globMatch(name, pattern) {
+		if !cloudutil.GlobMatch(name, pattern) {
 			continue
 		}
 		excluded := false
 		for _, ex := range excludeList {
-			if globMatch(name, ex) || globMatch(b.Name, ex) {
+			if cloudutil.GlobMatch(name, ex) || cloudutil.GlobMatch(b.Name, ex) {
 				excluded = true
 				break
 			}
@@ -150,7 +124,7 @@ func main() {
 
 	if dryRun {
 		for _, b := range candidates {
-			dest := localPath(b.Name, prefix, destination, flatten)
+			dest := cloudutil.LocalPath(b.Name, prefix, destination, flatten)
 			fmt.Printf("[DRY-RUN] Would download: gs://%s/%s -> %s\n", bucket, b.Name, dest)
 		}
 		fmt.Printf("\nTotal: %d blob(s)\n", len(candidates))
@@ -176,7 +150,7 @@ func main() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			dest := localPath(blob.Name, prefix, destination, flatten)
+			dest := cloudutil.LocalPath(blob.Name, prefix, destination, flatten)
 
 			if _, err := os.Stat(dest); err == nil {
 				fmt.Printf("Skipping (exists): %s\n", dest)
@@ -201,8 +175,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-
-type multiFlag []string
-
-func (m *multiFlag) String() string     { return strings.Join(*m, ",") }
-func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }

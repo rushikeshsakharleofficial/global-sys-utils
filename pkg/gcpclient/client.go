@@ -11,12 +11,27 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
+
+// ParseGCSURL parses a gs://bucket[/prefix] URL into its components.
+func ParseGCSURL(raw string) (bucket, prefix string, err error) {
+	if !strings.HasPrefix(raw, "gs://") {
+		return "", "", fmt.Errorf("invalid GCS URL %q: must start with gs://", raw)
+	}
+	rest := strings.TrimPrefix(raw, "gs://")
+	parts := strings.SplitN(rest, "/", 2)
+	bucket = parts[0]
+	if len(parts) == 2 {
+		prefix = strings.TrimRight(parts[1], "/")
+	}
+	return
+}
 
 // Config holds options for creating a GCS client.
 type Config struct {
@@ -73,7 +88,7 @@ func (c *Client) Close() {
 // If opts.Verify is true, the local MD5 is sent in the request so GCS validates
 // it server-side, then we confirm it matches the stored object attrs.
 func (c *Client) Upload(ctx context.Context, localPath, bucket, blobName string, opts UploadOptions) error {
-	retries := max1(opts.Retries)
+	retries := max(opts.Retries, 1)
 
 	var localMD5b64 string
 	if opts.Verify {
@@ -139,7 +154,7 @@ func (c *Client) writeBlob(ctx context.Context, localPath, bucket, blobName, loc
 
 // Download downloads gs://bucket/blobName to localPath, creating parent dirs as needed.
 func (c *Client) Download(ctx context.Context, bucket, blobName, localPath string, opts DownloadOptions) error {
-	retries := max1(opts.Retries)
+	retries := max(opts.Retries, 1)
 
 	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
 		return err
@@ -214,9 +229,3 @@ func md5B64(path string) (string, error) {
 	return base64.StdEncoding.EncodeToString(h.Sum(nil)), nil
 }
 
-func max1(n int) int {
-	if n < 1 {
-		return 1
-	}
-	return n
-}

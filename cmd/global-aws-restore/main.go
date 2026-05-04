@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/rushikeshsakharleofficial/global-logrotate/pkg/awsclient"
+	"github.com/rushikeshsakharleofficial/global-logrotate/pkg/cloudutil"
 )
 
 const usage = `Usage: global-aws-restore --source <s3://bucket[/prefix]> --destination <path> [OPTIONS]
@@ -36,38 +36,12 @@ Examples:
       --pattern "*.gz" --parallel 8 --flatten --dry-run
 `
 
-func parseS3URL(raw string) (bucket, prefix string, err error) {
-	if !strings.HasPrefix(raw, "s3://") {
-		return "", "", fmt.Errorf("invalid S3 URL %q: must start with s3://", raw)
-	}
-	rest := strings.TrimPrefix(raw, "s3://")
-	parts := strings.SplitN(rest, "/", 2)
-	bucket = parts[0]
-	if len(parts) == 2 {
-		prefix = strings.TrimRight(parts[1], "/")
-	}
-	return
-}
-
-func globMatch(name, pattern string) bool {
-	matched, _ := filepath.Match(pattern, name)
-	return matched
-}
-
-func localPath(key, prefix, dest string, flatten bool) string {
-	if flatten {
-		return filepath.Join(dest, filepath.Base(key))
-	}
-	relative := strings.TrimLeft(strings.TrimPrefix(key, prefix), "/")
-	return filepath.Join(dest, relative)
-}
-
 func main() {
 	var (
 		source      string
 		destination string
 		pattern     string
-		excludeList multiFlag
+		excludeList cloudutil.MultiFlag
 		parallel    int
 		profile     string
 		region      string
@@ -98,7 +72,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	bucket, prefix, err := parseS3URL(source)
+	bucket, prefix, err := awsclient.ParseS3URL(source)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ERROR:", err)
 		os.Exit(1)
@@ -122,16 +96,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Filter by pattern and exclude
 	var candidates []awsclient.ObjectInfo
 	for _, obj := range objects {
 		name := filepath.Base(obj.Key)
-		if !globMatch(name, pattern) {
+		if !cloudutil.GlobMatch(name, pattern) {
 			continue
 		}
 		excluded := false
 		for _, ex := range excludeList {
-			if globMatch(name, ex) || globMatch(obj.Key, ex) {
+			if cloudutil.GlobMatch(name, ex) || cloudutil.GlobMatch(obj.Key, ex) {
 				excluded = true
 				break
 			}
@@ -150,7 +123,7 @@ func main() {
 
 	if dryRun {
 		for _, obj := range candidates {
-			dest := localPath(obj.Key, prefix, destination, flatten)
+			dest := cloudutil.LocalPath(obj.Key, prefix, destination, flatten)
 			fmt.Printf("[DRY-RUN] Would download: s3://%s/%s -> %s\n", bucket, obj.Key, dest)
 		}
 		fmt.Printf("\nTotal: %d object(s)\n", len(candidates))
@@ -176,7 +149,7 @@ func main() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			dest := localPath(o.Key, prefix, destination, flatten)
+			dest := cloudutil.LocalPath(o.Key, prefix, destination, flatten)
 
 			if _, err := os.Stat(dest); err == nil {
 				fmt.Printf("Skipping (exists): %s\n", dest)
@@ -201,8 +174,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-
-type multiFlag []string
-
-func (m *multiFlag) String() string        { return strings.Join(*m, ",") }
-func (m *multiFlag) Set(v string) error    { *m = append(*m, v); return nil }

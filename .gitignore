@@ -5,6 +5,10 @@ build/
 *.so
 *.dylib
 
+# Pre-built packages (built by CI, not stored in repo)
+DEBS/
+RPMS/
+
 # Vector DB / RAG files (devrag tooling, not part of this project)
 vectors.db
 config.json
@@ -18,6 +22,14 @@ documents/
 
 # Claude
 .claude/
+
+# AI tool configs and generated files
+.code-outline-graph/
+.codex/
+.gemini/
+.mcp.json
+AGENTS.md
+GEMINI.md
 
 # Credentials (never commit)
 credentials.ini

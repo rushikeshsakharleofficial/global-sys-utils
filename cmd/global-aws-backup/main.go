@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/rushikeshsakharleofficial/global-logrotate/pkg/awsclient"
+	"github.com/rushikeshsakharleofficial/global-logrotate/pkg/cloudutil"
 )
 
 const usage = `Usage: global-aws-backup --source <path> --destination <s3://bucket[/prefix]> --days <N> [OPTIONS]
@@ -40,57 +39,13 @@ Examples:
       --pattern "*.gz" --parallel 8 --dry-run
 `
 
-var dateRe = regexp.MustCompile(`(\d{4}-\d{2}-\d{2})|(\d{8})`)
-
-func extractDate(name string) (time.Time, bool) {
-	m := dateRe.FindString(name)
-	if m == "" {
-		return time.Time{}, false
-	}
-	for _, layout := range []string{"20060102", "2006-01-02"} {
-		if t, err := time.Parse(layout, m); err == nil {
-			return t, true
-		}
-	}
-	return time.Time{}, false
-}
-
-func parseS3URL(raw string) (bucket, prefix string, err error) {
-	if !strings.HasPrefix(raw, "s3://") {
-		return "", "", fmt.Errorf("invalid S3 URL %q: must start with s3://", raw)
-	}
-	rest := strings.TrimPrefix(raw, "s3://")
-	parts := strings.SplitN(rest, "/", 2)
-	bucket = parts[0]
-	if len(parts) == 2 {
-		prefix = strings.TrimRight(parts[1], "/")
-	}
-	return
-}
-
-func globMatch(name, pattern string) bool {
-	matched, _ := filepath.Match(pattern, name)
-	return matched
-}
-
-func buildKey(path, sourceRoot, prefix, hostname string) string {
-	relDir := strings.TrimLeft(filepath.Dir(path), "/")
-	parts := []string{}
-	for _, p := range []string{prefix, hostname, relDir, filepath.Base(path)} {
-		if p != "" {
-			parts = append(parts, p)
-		}
-	}
-	return strings.Join(parts, "/")
-}
-
 func main() {
 	var (
 		source      string
 		destination string
 		days        int
 		pattern     string
-		excludeList multiFlag
+		excludeList cloudutil.MultiFlag
 		parallel    int
 		profile     string
 		region      string
@@ -124,7 +79,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	bucket, prefix, err := parseS3URL(destination)
+	bucket, prefix, err := awsclient.ParseS3URL(destination)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ERROR:", err)
 		os.Exit(1)
@@ -140,15 +95,15 @@ func main() {
 			return nil
 		}
 		name := d.Name()
-		if !globMatch(name, pattern) {
+		if !cloudutil.GlobMatch(name, pattern) {
 			return nil
 		}
 		for _, ex := range excludeList {
-			if globMatch(name, ex) || globMatch(path, ex) {
+			if cloudutil.GlobMatch(name, ex) || cloudutil.GlobMatch(path, ex) {
 				return nil
 			}
 		}
-		t, ok := extractDate(name)
+		t, ok := cloudutil.ExtractDate(name)
 		if !ok || !t.Before(cutoff) {
 			return nil
 		}
@@ -174,7 +129,7 @@ func main() {
 	// Dry-run: print and exit without touching credentials
 	if dryRun {
 		for _, path := range candidates {
-			key := buildKey(path, source, prefix, hostname)
+			key := cloudutil.BuildObjectPath(path, prefix, hostname)
 			fmt.Printf("[DRY-RUN] Would %s: %s -> s3://%s/%s\n", action, path, bucket, key)
 		}
 		fmt.Printf("\nTotal: %d file(s)\n", len(candidates))
@@ -202,7 +157,7 @@ func main() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			key := buildKey(localPath, source, prefix, hostname)
+			key := cloudutil.BuildObjectPath(localPath, prefix, hostname)
 			uploadErr := client.Upload(ctx, localPath, bucket, key, awsclient.UploadOptions{
 				Verify:  !noVerify,
 				Retries: retries,
@@ -230,9 +185,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-
-// multiFlag allows --exclude to be specified multiple times.
-type multiFlag []string
-
-func (m *multiFlag) String() string  { return strings.Join(*m, ",") }
-func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }

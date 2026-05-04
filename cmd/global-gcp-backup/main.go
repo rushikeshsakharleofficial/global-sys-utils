@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/rushikeshsakharleofficial/global-logrotate/pkg/cloudutil"
 	"github.com/rushikeshsakharleofficial/global-logrotate/pkg/gcpclient"
 )
 
@@ -40,57 +39,13 @@ Examples:
       --pattern "*.gz" --parallel 8 --dry-run
 `
 
-var dateRe = regexp.MustCompile(`(\d{4}-\d{2}-\d{2})|(\d{8})`)
-
-func extractDate(name string) (time.Time, bool) {
-	m := dateRe.FindString(name)
-	if m == "" {
-		return time.Time{}, false
-	}
-	for _, layout := range []string{"20060102", "2006-01-02"} {
-		if t, err := time.Parse(layout, m); err == nil {
-			return t, true
-		}
-	}
-	return time.Time{}, false
-}
-
-func parseGCSURL(raw string) (bucket, prefix string, err error) {
-	if !strings.HasPrefix(raw, "gs://") {
-		return "", "", fmt.Errorf("invalid GCS URL %q: must start with gs://", raw)
-	}
-	rest := strings.TrimPrefix(raw, "gs://")
-	parts := strings.SplitN(rest, "/", 2)
-	bucket = parts[0]
-	if len(parts) == 2 {
-		prefix = strings.TrimRight(parts[1], "/")
-	}
-	return
-}
-
-func globMatch(name, pattern string) bool {
-	matched, _ := filepath.Match(pattern, name)
-	return matched
-}
-
-func buildBlobName(path, prefix, hostname string) string {
-	relDir := strings.TrimLeft(filepath.Dir(path), "/")
-	parts := []string{}
-	for _, p := range []string{prefix, hostname, relDir, filepath.Base(path)} {
-		if p != "" {
-			parts = append(parts, p)
-		}
-	}
-	return strings.Join(parts, "/")
-}
-
 func main() {
 	var (
 		source      string
 		destination string
 		days        int
 		pattern     string
-		excludeList multiFlag
+		excludeList cloudutil.MultiFlag
 		parallel    int
 		project     string
 		credentials string
@@ -124,7 +79,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	bucket, prefix, err := parseGCSURL(destination)
+	bucket, prefix, err := gcpclient.ParseGCSURL(destination)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ERROR:", err)
 		os.Exit(1)
@@ -140,15 +95,15 @@ func main() {
 			return nil
 		}
 		name := d.Name()
-		if !globMatch(name, pattern) {
+		if !cloudutil.GlobMatch(name, pattern) {
 			return nil
 		}
 		for _, ex := range excludeList {
-			if globMatch(name, ex) || globMatch(path, ex) {
+			if cloudutil.GlobMatch(name, ex) || cloudutil.GlobMatch(path, ex) {
 				return nil
 			}
 		}
-		t, ok := extractDate(name)
+		t, ok := cloudutil.ExtractDate(name)
 		if !ok || !t.Before(cutoff) {
 			return nil
 		}
@@ -174,7 +129,7 @@ func main() {
 	// Dry-run: print and exit without touching credentials
 	if dryRun {
 		for _, path := range candidates {
-			blob := buildBlobName(path, prefix, hostname)
+			blob := cloudutil.BuildObjectPath(path, prefix, hostname)
 			fmt.Printf("[DRY-RUN] Would %s: %s -> gs://%s/%s\n", action, path, bucket, blob)
 		}
 		fmt.Printf("\nTotal: %d file(s)\n", len(candidates))
@@ -203,7 +158,7 @@ func main() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			blob := buildBlobName(localPath, prefix, hostname)
+			blob := cloudutil.BuildObjectPath(localPath, prefix, hostname)
 			uploadErr := client.Upload(ctx, localPath, bucket, blob, gcpclient.UploadOptions{
 				Verify:  !noVerify,
 				Retries: retries,
@@ -231,8 +186,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-
-type multiFlag []string
-
-func (m *multiFlag) String() string     { return strings.Join(*m, ",") }
-func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }

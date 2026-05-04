@@ -1027,10 +1027,10 @@ func rotateLogFile(logFile string, cfg *Config) {
 
 	compressionRatio := float64(0)
 	if originalSize > 0 {
-		compressionRatio = (1 - float64(compressedSize)/float64(originalSize)) * 100
+		compressionRatio = max((1-float64(compressedSize)/float64(originalSize))*100, 0)
 	}
 
-	saved := originalSize - compressedSize
+	saved := max(originalSize-compressedSize, 0)
 
 	encStatus := ""
 	if cfg.Encrypt {
@@ -1164,29 +1164,28 @@ func decryptData(data []byte, password string) ([]byte, error) {
 	return plaintext, nil
 }
 
+func matchesHash(password, wantHex string) bool {
+	h := sha256.Sum256([]byte(password))
+	return hex.EncodeToString(h[:]) == wantHex
+}
+
 func getEncryptionPassword(cfg *Config) string {
 	passwordMu.Lock()
 	defer passwordMu.Unlock()
 
-	// Return cached password if available
 	if cachedPassword != "" {
 		return cachedPassword
 	}
 
-	// If plain password is set in config (not recommended but supported)
 	if cfg.EncryptPassword != "" {
 		cachedPassword = cfg.EncryptPassword
 		return cachedPassword
 	}
 
-	// Check user's credentials file first (~/.global-sys-utils/config/credentials.ini)
 	credPass := readPasswordFromCredentials()
 	if credPass != "" {
-		// If hash is configured, verify it
 		if cfg.EncryptPassHash != "" {
-			hash := sha256.Sum256([]byte(credPass))
-			hashStr := hex.EncodeToString(hash[:])
-			if hashStr == cfg.EncryptPassHash {
+			if matchesHash(credPass, cfg.EncryptPassHash) {
 				cachedPassword = credPass
 				logDebug("Password loaded from credentials file")
 				return cachedPassword
@@ -1199,14 +1198,10 @@ func getEncryptionPassword(cfg *Config) string {
 		}
 	}
 
-	// Check environment variable
 	envPass := os.Getenv("LOGROTATE_PASSWORD")
 	if envPass != "" {
-		// If hash is configured, verify it
 		if cfg.EncryptPassHash != "" {
-			hash := sha256.Sum256([]byte(envPass))
-			hashStr := hex.EncodeToString(hash[:])
-			if hashStr == cfg.EncryptPassHash {
+			if matchesHash(envPass, cfg.EncryptPassHash) {
 				cachedPassword = envPass
 				logDebug("Password loaded from environment variable")
 				return cachedPassword
@@ -1220,18 +1215,13 @@ func getEncryptionPassword(cfg *Config) string {
 		}
 	}
 
-	// If hash is set, prompt for password (only once)
 	if cfg.EncryptPassHash != "" {
 		password, err := readPassword("Enter encryption password: ")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading password: %v\n", err)
 			return ""
 		}
-
-		// Verify
-		hash := sha256.Sum256([]byte(password))
-		hashStr := hex.EncodeToString(hash[:])
-		if hashStr == cfg.EncryptPassHash {
+		if matchesHash(password, cfg.EncryptPassHash) {
 			cachedPassword = password
 			return cachedPassword
 		}
@@ -1306,35 +1296,25 @@ func readEncryptedGzFile(data []byte, cfg *Config) ([]byte, error) {
 }
 
 func getDecryptionPassword(cfg *Config) string {
-	// If plain password is set
 	if cfg.EncryptPassword != "" {
 		return cfg.EncryptPassword
 	}
 
-	// Check user's credentials file first (~/.global-sys-utils/config/credentials.ini)
 	credPass := readPasswordFromCredentials()
 	if credPass != "" {
-		// If hash is configured, verify it
 		if cfg.EncryptPassHash != "" {
-			hash := sha256.Sum256([]byte(credPass))
-			hashStr := hex.EncodeToString(hash[:])
-			if hashStr == cfg.EncryptPassHash {
+			if matchesHash(credPass, cfg.EncryptPassHash) {
 				return credPass
 			}
-			// Password doesn't match hash, continue to other methods
 		} else {
 			return credPass
 		}
 	}
 
-	// Check environment variable
 	envPass := os.Getenv("LOGROTATE_PASSWORD")
 	if envPass != "" {
-		// If hash is configured, verify it
 		if cfg.EncryptPassHash != "" {
-			hash := sha256.Sum256([]byte(envPass))
-			hashStr := hex.EncodeToString(hash[:])
-			if hashStr == cfg.EncryptPassHash {
+			if matchesHash(envPass, cfg.EncryptPassHash) {
 				return envPass
 			}
 			fmt.Fprintf(os.Stderr, "Warning: LOGROTATE_PASSWORD does not match configured hash\n")
@@ -1343,21 +1323,15 @@ func getDecryptionPassword(cfg *Config) string {
 		}
 	}
 
-	// Prompt for password (only for users without credentials.ini or env var)
 	password, err := readPassword("Enter decryption password: ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading password: %v\n", err)
 		return ""
 	}
 
-	// If hash is configured, verify it
-	if cfg.EncryptPassHash != "" {
-		hash := sha256.Sum256([]byte(password))
-		hashStr := hex.EncodeToString(hash[:])
-		if hashStr != cfg.EncryptPassHash {
-			fmt.Fprintf(os.Stderr, "Error: Password does not match configured hash\n")
-			return ""
-		}
+	if cfg.EncryptPassHash != "" && !matchesHash(password, cfg.EncryptPassHash) {
+		fmt.Fprintf(os.Stderr, "Error: Password does not match configured hash\n")
+		return ""
 	}
 
 	return password

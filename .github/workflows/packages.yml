@@ -1,0 +1,86 @@
+name: Build and Release Packages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'pkg/**'
+      - 'Makefile'
+      - 'packaging/**'
+      - 'config/**'
+      - 'completions/**'
+      - 'man/**'
+      - 'go.mod'
+      - 'go.sum'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y rpm dpkg
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep '^VERSION :=' Makefile | awk '{print $3}')
+          RELEASE=$(grep '^RELEASE :=' Makefile | awk '{print $3}')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build all packages (amd64 + arm64)
+        run: make packages-all
+
+      - name: Collect package paths
+        id: packages
+        run: |
+          echo "debs=$(ls build/deb/*.deb 2>/dev/null | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+          echo "rpms=$(find build/rpm -name '*.rpm' 2>/dev/null | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "global-logrotate ${{ steps.version.outputs.tag }}"
+          body: |
+            ## global-logrotate ${{ steps.version.outputs.tag }}
+
+            ### Packages
+            | File | Architecture |
+            |------|--------------|
+            | `global-logrotate_${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}_amd64.deb` | Linux x86_64 (DEB) |
+            | `global-logrotate_${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}_arm64.deb` | Linux ARM64 (DEB) |
+            | `global-logrotate-${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}.x86_64.rpm` | Linux x86_64 (RPM) |
+            | `global-logrotate-${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}.aarch64.rpm` | Linux ARM64 (RPM) |
+
+            ### Install
+
+            **RPM-based (RHEL, CentOS, Fedora):**
+            ```bash
+            sudo rpm -ivh global-logrotate-${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}.x86_64.rpm
+            ```
+
+            **DEB-based (Debian, Ubuntu):**
+            ```bash
+            sudo dpkg -i global-logrotate_${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}_amd64.deb
+            ```
+          make_latest: true
+          files: |
+            build/deb/*.deb
+            build/rpm/**/*.rpm

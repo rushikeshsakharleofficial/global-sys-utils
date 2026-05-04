@@ -75,28 +75,34 @@ All Go code is in a single file: `cmd/global-logrotate/main.go` (~1400 lines).
 2. `/etc/global-sys-utils/global.conf.d/*.conf` (drop-ins, alphabetical order)
 3. CLI flags (highest priority)
 
-### Cloud scripts (root level, Python)
+### Cloud tools (`cmd/`)
 
-All four cloud scripts are Python 3 using native SDKs (no CLI dependency):
+Four Go binaries using native SDKs:
 
-| Script | SDK | Purpose |
+| Command | Package | Purpose |
 |---|---|---|
-| `global-aws-backup` | `boto3` | Move/copy aged log files to S3 |
-| `global-aws-restore` | `boto3` | Download files from S3 |
-| `global-gcp-backup` | `google-cloud-storage` | Move/copy aged log files to GCS |
-| `global-gcp-restore` | `google-cloud-storage` | Download files from GCS |
+| `global-aws-backup` | `pkg/awsclient` | Move/copy aged log files to S3 |
+| `global-aws-restore` | `pkg/awsclient` | Download files from S3 |
+| `global-gcp-backup` | `pkg/gcpclient` | Move/copy aged log files to GCS |
+| `global-gcp-restore` | `pkg/gcpclient` | Download files from GCS |
 
 **Shared features across all four:** `--dry-run`, `--parallel N`, `--pattern`, `--exclude` (repeatable), `--retries`, `--flatten` (restore only).
 
 **Backup-specific:** `--copy` (preserve source), `--no-verify` (skip MD5 check after upload).
 
 **Auth:**
-- AWS: `--profile` / `--region`, or standard boto3 credential chain (env vars, `~/.aws/`)
+- AWS: `--profile` / `--region`, or standard AWS credential chain (env vars, `~/.aws/`)
 - GCP: `--credentials /path/to/sa-key.json` or ADC (`GOOGLE_APPLICATION_CREDENTIALS`)
 
 **S3 key / GCS blob path structure:** `{prefix}/{hostname}/{relative_dir}/{filename}`
 
-**Legacy bash scripts (root level)**
+### Shared packages
+
+- `pkg/awsclient` — S3 client: `Upload`, `Download`, `ListObjects`, `Delete`, `ParseS3URL`
+- `pkg/gcpclient` — GCS client: `Upload`, `Download`, `ListBlobs`, `Delete`, `ParseGCSURL`
+- `pkg/cloudutil` — shared helpers for cloud tools: `GlobMatch`, `ExtractDate`, `BuildObjectPath`, `LocalPath`, `MultiFlag`
+
+**Legacy bash script (root level)**
 
 - `global-logrotate` — original bash implementation (superseded by Go binary)
 

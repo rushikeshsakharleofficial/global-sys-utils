@@ -18,6 +18,20 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+// ParseS3URL parses an s3://bucket[/prefix] URL into its components.
+func ParseS3URL(raw string) (bucket, prefix string, err error) {
+	if !strings.HasPrefix(raw, "s3://") {
+		return "", "", fmt.Errorf("invalid S3 URL %q: must start with s3://", raw)
+	}
+	rest := strings.TrimPrefix(raw, "s3://")
+	parts := strings.SplitN(rest, "/", 2)
+	bucket = parts[0]
+	if len(parts) == 2 {
+		prefix = strings.TrimRight(parts[1], "/")
+	}
+	return
+}
+
 // Config holds options for creating an S3 client.
 type Config struct {
 	Profile string
@@ -67,7 +81,7 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 // If opts.Verify is true, compares the local MD5 against the returned ETag
 // (works for single-part uploads; multipart ETags contain '-' and are skipped).
 func (c *Client) Upload(ctx context.Context, localPath, bucket, key string, opts UploadOptions) error {
-	retries := max1(opts.Retries)
+	retries := max(opts.Retries, 1)
 
 	var localMD5 string
 	if opts.Verify {
@@ -137,7 +151,7 @@ func (c *Client) verifyETag(ctx context.Context, bucket, key, localMD5 string) e
 
 // Download downloads s3://bucket/key to localPath, creating parent directories as needed.
 func (c *Client) Download(ctx context.Context, bucket, key, localPath string, opts DownloadOptions) error {
-	retries := max1(opts.Retries)
+	retries := max(opts.Retries, 1)
 
 	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
 		return err
@@ -224,9 +238,3 @@ func md5Hex(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func max1(n int) int {
-	if n < 1 {
-		return 1
-	}
-	return n
-}
