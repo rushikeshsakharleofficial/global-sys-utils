@@ -46,21 +46,41 @@ jobs:
           echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Check if release already exists
+      - name: Check if version already packaged
         id: check
         run: |
-          TAG="v$(grep '^VERSION :=' Makefile | awk '{print $3}')"
-          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+          TAG="${{ steps.version.outputs.tag }}"
+          if [ -d "installers/$TAG" ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Release $TAG already exists — skipping."
+            echo "installers/$TAG already exists — skipping."
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "Release $TAG does not exist — will create."
+            echo "installers/$TAG does not exist — will build."
           fi
 
       - name: Build all packages (amd64 + arm64)
         if: steps.check.outputs.exists == 'false'
         run: make packages-all
+
+      - name: Copy packages to installers/
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          mkdir -p "installers/$TAG"
+          cp build/deb/*.deb "installers/$TAG/"
+          find build/rpm -name '*.rpm' -exec cp {} "installers/$TAG/" \;
+          echo "Packages copied to installers/$TAG:"
+          ls -lh "installers/$TAG/"
+
+      - name: Commit and push installers/
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "installers/$TAG"
+          git commit -m "ci: add packages for $TAG"
+          git push origin main
 
       - name: Create GitHub Release
         if: steps.check.outputs.exists == 'false'
@@ -92,5 +112,5 @@ jobs:
             ```
           make_latest: true
           files: |
-            build/deb/*.deb
-            build/rpm/**/*.rpm
+            installers/${{ steps.version.outputs.tag }}/*.deb
+            installers/${{ steps.version.outputs.tag }}/*.rpm
