@@ -9,8 +9,11 @@ NATIVE_GOARCH := $(shell go env GOARCH)
 # Supported architectures
 ARCHS := amd64 arm64
 
-# All binaries produced by this repo
-CMDS := global-logrotate global-aws-backup global-aws-restore global-gcp-backup global-gcp-restore
+# Go binaries
+CMDS := global-logrotate
+
+# Python cloud tools (installed as executable scripts)
+PY_SCRIPTS := global-aws-backup global-aws-restore global-gcp-backup global-gcp-restore
 
 BINARY := $(NAME)
 BUILDDIR := build
@@ -64,9 +67,15 @@ install: build man
 	@# Install zsh completion
 	@mkdir -p /usr/share/zsh/vendor-completions
 	@install -Dm644 completions/_global-logrotate /usr/share/zsh/vendor-completions/_$(BINARY)
+	@# Install Python cloud tools
+	@for script in $(PY_SCRIPTS); do \
+		install -Dm755 $$script /usr/local/bin/$$script; \
+	done
 	@echo "Installed to /usr/local/bin/$(BINARY)"
+	@echo "Cloud tools installed: $(PY_SCRIPTS)"
 	@echo "Config installed to /etc/global-sys-utils/"
 	@echo "Shell completions installed for bash and zsh"
+	@echo "Install Python dependencies: pip install -r requirements.txt"
 
 # RPM Package for specific architecture
 # Usage: make rpm GOARCH=amd64 or make rpm GOARCH=arm64

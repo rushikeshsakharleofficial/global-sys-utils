@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""Backup aged log files to Google Cloud Storage."""
+
+import argparse
+import fnmatch
+import os
+import re
+import socket
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+
+from google.cloud import storage
+from google.api_core.exceptions import GoogleAPIError
+from google.api_core.retry import Retry
+
+_DATE_RE = re.compile(r'\d{4}-\d{2}-\d{2}|\d{8}')
+
+
+def _extract_date(name):
+    m = _DATE_RE.search(name)
+    if not m:
+        return None
+    s = m.group()
+    for fmt in ('%Y%m%d', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    return None
+
+
+def _glob(name, pattern):
+    return fnmatch.fnmatch(name, pattern)
+
+
+def _parse_gcs_url(url):
+    if not url.startswith('gs://'):
+        sys.exit(f"ERROR: invalid GCS URL {url!r}: must start with gs://")
+    bucket, _, prefix = url[5:].partition('/')
+    return bucket, prefix.rstrip('/')
+
+
+def _object_path(path, prefix, hostname):
+    rel = os.path.dirname(path).lstrip('/')
+    parts = [p for p in (prefix, hostname, rel, os.path.basename(path)) if p]
+    return '/'.join(parts)
+
+
+def _upload(client, path, bucket_name, blob_name, verify, retries):
+    last_err = None
+    for attempt in range(1, retries + 1):
+        if attempt > 1:
+            time.sleep(2 ** (attempt - 2))
+        try:
+            bucket = client.bucket(bucket_name)
+            blob = bucket.blob(blob_name)
+            blob.upload_from_filename(path, checksum='md5' if verify else None)
+            return
+        except (GoogleAPIError, Exception) as e:
+            last_err = e
+    raise RuntimeError(f"upload gs://{bucket_name}/{blob_name} failed after {retries} attempt(s): {last_err}")
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        prog='global-gcp-backup',
+        description='Backup log files to Google Cloud Storage.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  global-gcp-backup --source /var/log/apps --destination gs://my-bucket/logs --days 30\n"
+            "  global-gcp-backup --source /var/log/apps --destination gs://my-bucket/logs --days 30 \\\n"
+            "      --pattern '*.gz' --parallel 8 --dry-run"
+        ),
+    )
+    ap.add_argument('--source',      required=True,                    help='Source directory to scan')
+    ap.add_argument('--destination', required=True,                    help='GCS destination (gs://bucket[/prefix])')
+    ap.add_argument('--days',        required=True, type=int,          help='Process files dated older than N days')
+    ap.add_argument('--pattern',     default='*',                      help='Filename glob to include (default: *)')
+    ap.add_argument('--exclude',     action='append', default=[],      help='Filename glob to exclude; repeatable', metavar='GLOB')
+    ap.add_argument('--parallel',    type=int, default=4,              help='Concurrent uploads (default: 4)')
+    ap.add_argument('--project',     default=None,                     help='GCP project ID')
+    ap.add_argument('--credentials', default=None,                     help='Path to service account JSON key file')
+    ap.add_argument('--retries',     type=int, default=3,              help='Upload retry count (default: 3)')
+    ap.add_argument('--copy',        action='store_true',              help='Copy files instead of moving (preserve source)')
+    ap.add_argument('--no-verify',   action='store_true', dest='no_verify', help='Skip MD5 verification after upload')
+    ap.add_argument('--dry-run',     action='store_true', dest='dry_run',   help='Print actions without making changes')
+    args = ap.parse_args()
+
+    bucket_name, prefix = _parse_gcs_url(args.destination)
+    hostname = socket.gethostname()
+    cutoff = (datetime.now(tz=timezone.utc)
+              .replace(hour=0, minute=0, second=0, microsecond=0)
+              - timedelta(days=args.days))
+
+    candidates = []
+    for root, _, files in os.walk(args.source):
+        for name in files:
+            path = os.path.join(root, name)
+            if not _glob(name, args.pattern):
+                continue
+            if any(_glob(name, ex) or _glob(path, ex) for ex in args.exclude):
+                continue
+            t = _extract_date(name)
+            if t is None or t >= cutoff:
+                continue
+            candidates.append(path)
+
+    if not candidates:
+        print(f"No files matching criteria found in {args.source}")
+        sys.exit(0)
+
+    action = 'copy' if args.copy else 'move'
+    print(f"Found {len(candidates)} file(s) to {action} (cutoff: {cutoff.strftime('%Y-%m-%d')})")
+
+    if args.dry_run:
+        for path in candidates:
+            blob_name = _object_path(path, prefix, hostname)
+            print(f"[DRY-RUN] Would {action}: {path} -> gs://{bucket_name}/{blob_name}")
+        print(f"\nTotal: {len(candidates)} file(s)")
+        return
+
+    client_kwargs = {}
+    if args.project:
+        client_kwargs['project'] = args.project
+    if args.credentials:
+        from google.oauth2 import service_account
+        client_kwargs['credentials'] = service_account.Credentials.from_service_account_file(args.credentials)
+    client = storage.Client(**client_kwargs)
+
+    def process(path):
+        blob_name = _object_path(path, prefix, hostname)
+        try:
+            _upload(client, path, bucket_name, blob_name, verify=not args.no_verify, retries=args.retries)
+        except Exception as e:
+            print(f"ERROR: {path}: {e}", file=sys.stderr)
+            return False
+        verb = 'Copied' if args.copy else 'Moved'
+        if not args.copy:
+            os.remove(path)
+        print(f"{verb}: {path} -> gs://{bucket_name}/{blob_name}")
+        return True
+
+    with ThreadPoolExecutor(max_workers=args.parallel) as pool:
+        results = list(pool.map(process, candidates))
+
+    ok, fail = results.count(True), results.count(False)
+    print(f"\nDone: {ok} succeeded, {fail} failed")
+    if fail:
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

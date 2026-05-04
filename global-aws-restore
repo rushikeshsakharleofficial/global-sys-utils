@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""Restore log files from AWS S3."""
+
+import argparse
+import fnmatch
+import os
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+
+
+def _glob(name, pattern):
+    return fnmatch.fnmatch(name, pattern)
+
+
+def _parse_s3_url(url):
+    if not url.startswith('s3://'):
+        sys.exit(f"ERROR: invalid S3 URL {url!r}: must start with s3://")
+    bucket, _, prefix = url[5:].partition('/')
+    return bucket, prefix.rstrip('/')
+
+
+def _local_path(key, prefix, dest, flatten):
+    if flatten:
+        return os.path.join(dest, os.path.basename(key))
+    relative = key.removeprefix(prefix).lstrip('/')
+    return os.path.join(dest, relative)
+
+
+def _download(s3, bucket, key, dest_path, retries):
+    last_err = None
+    for attempt in range(1, retries + 1):
+        if attempt > 1:
+            time.sleep(2 ** (attempt - 2))
+        try:
+            Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
+            s3.download_file(bucket, key, dest_path)
+            return
+        except (BotoCoreError, ClientError) as e:
+            if os.path.exists(dest_path):
+                os.remove(dest_path)
+            last_err = e
+    raise RuntimeError(f"download s3://{bucket}/{key} failed after {retries} attempt(s): {last_err}")
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        prog='global-aws-restore',
+        description='Restore log files from AWS S3.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  global-aws-restore --source s3://my-bucket/logs --destination /var/log/restore\n"
+            "  global-aws-restore --source s3://my-bucket/logs/myhost --destination /tmp/restore \\\n"
+            "      --pattern '*.gz' --parallel 8 --flatten --dry-run"
+        ),
+    )
+    ap.add_argument('--source',      required=True,               help='S3 source (s3://bucket[/prefix])')
+    ap.add_argument('--destination', required=True,               help='Local directory to restore into')
+    ap.add_argument('--pattern',     default='*',                 help='Filename glob to include (default: *)')
+    ap.add_argument('--exclude',     action='append', default=[], help='Filename glob to exclude; repeatable', metavar='GLOB')
+    ap.add_argument('--parallel',    type=int, default=4,         help='Concurrent downloads (default: 4)')
+    ap.add_argument('--profile',     default=None,                help='AWS profile name')
+    ap.add_argument('--region',      default=None,                help='AWS region')
+    ap.add_argument('--retries',     type=int, default=3,         help='Download retry count (default: 3)')
+    ap.add_argument('--flatten',     action='store_true',         help='Put all files directly in destination (no subdirs)')
+    ap.add_argument('--dry-run',     action='store_true', dest='dry_run', help='Print actions without downloading anything')
+    args = ap.parse_args()
+
+    bucket, prefix = _parse_s3_url(args.source)
+
+    session = boto3.Session(profile_name=args.profile, region_name=args.region)
+    s3 = session.client('s3')
+
+    list_prefix = (prefix + '/') if prefix else ''
+    print(f"Listing objects under s3://{bucket}/{prefix} ...")
+
+    paginator = s3.get_paginator('list_objects_v2')
+    objects = []
+    for page in paginator.paginate(Bucket=bucket, Prefix=list_prefix):
+        for obj in page.get('Contents', []):
+            objects.append(obj['Key'])
+
+    candidates = []
+    for key in objects:
+        name = os.path.basename(key)
+        if not _glob(name, args.pattern):
+            continue
+        if any(_glob(name, ex) or _glob(key, ex) for ex in args.exclude):
+            continue
+        candidates.append(key)
+
+    if not candidates:
+        print("No objects found matching criteria.")
+        sys.exit(0)
+    print(f"Found {len(candidates)} object(s) to restore")
+
+    if args.dry_run:
+        for key in candidates:
+            dest = _local_path(key, prefix, args.destination, args.flatten)
+            print(f"[DRY-RUN] Would download: s3://{bucket}/{key} -> {dest}")
+        print(f"\nTotal: {len(candidates)} object(s)")
+        return
+
+    os.makedirs(args.destination, exist_ok=True)
+
+    def process(key):
+        dest = _local_path(key, prefix, args.destination, args.flatten)
+        if os.path.exists(dest):
+            print(f"Skipping (exists): {dest}")
+            return True
+        try:
+            _download(s3, bucket, key, dest, retries=args.retries)
+        except Exception as e:
+            print(f"ERROR: {key}: {e}", file=sys.stderr)
+            return False
+        print(f"Restored: s3://{bucket}/{key} -> {dest}")
+        return True
+
+    with ThreadPoolExecutor(max_workers=args.parallel) as pool:
+        results = list(pool.map(process, candidates))
+
+    ok, fail = results.count(True), results.count(False)
+    print(f"\nDone: {ok} succeeded, {fail} failed")
+    if fail:
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
