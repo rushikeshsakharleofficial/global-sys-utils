@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -38,6 +40,12 @@ const (
 	nonceSize  = 12
 	keySize    = 32 // AES-256
 	iterations = 100000
+
+	// Daemon defaults
+	defaultDiskCriticalPct = 90   // trigger emergency rotation when disk reaches this %
+	defaultDiskMinFreeMB   = 200  // refuse to write archive if less free MB than this
+	defaultDiskCheckSec    = 60   // seconds between disk checks
+	defaultPIDFile         = "/run/global-logrotate.pid"
 )
 
 // Log levels
@@ -86,6 +94,29 @@ type Config struct {
 	// Logging config
 	LogFile  string
 	LogLevel int
+	// Daemon / scheduling
+	JobName    string // human label derived from conf.d filename
+	Daemon     bool
+	DaemonOnce bool   // run all jobs once then exit (cron/systemd-timer use case)
+	Schedule   string // cron expression or interval string (e.g. "6h", "0 2 * * *")
+	PIDFile    string
+	// Disk safety
+	DiskCriticalPct int   // % disk used — triggers immediate rotation
+	DiskMinFreeMB   int64 // minimum free MB required to write an archive
+	DiskCheckSec    int   // interval between disk checks in daemon mode
+	// Cloud backup integration (triggered by daemon after rotation or in panic mode)
+	CloudProvider       string // "aws" | "gcp" | "" (empty = disabled)
+	CloudSource         string // local directory to backup (defaults to OldLogsDir or LogDir/old_logs)
+	CloudDestination    string // s3://bucket/prefix or gs://bucket/prefix
+	CloudDays           int    // only backup files older than N days
+	CloudParallel       int    // concurrent uploads
+	CloudTimeout        int    // per-operation timeout in seconds
+	CloudAWSProfile     string
+	CloudAWSRegion      string
+	CloudGCPProject     string
+	CloudGCPCredentials string
+	CloudOnSchedule     bool // run cloud backup after every scheduled rotation
+	CloudOnPanic        bool // run cloud backup when disk reaches DISK_CRITICAL_PERCENT
 }
 
 // initLogger initializes the global logger
@@ -170,8 +201,533 @@ func parseLogLevel(level string) int {
 	}
 }
 
+// ============================================================
+// Disk stats
+// ============================================================
+
+// diskStats returns usage info for the filesystem containing path.
+func diskStats(path string) (totalMB, freeMB int64, usedPct float64, err error) {
+	var st syscall.Statfs_t
+	if err = syscall.Statfs(path, &st); err != nil {
+		return 0, 0, 0, fmt.Errorf("statfs %s: %w", path, err)
+	}
+	total := int64(st.Blocks) * int64(st.Bsize)
+	free := int64(st.Bavail) * int64(st.Bsize)
+	totalMB = total / (1024 * 1024)
+	freeMB = free / (1024 * 1024)
+	if total > 0 {
+		usedPct = float64(total-free) / float64(total) * 100
+	}
+	return
+}
+
+// ============================================================
+// Schedule parsing — cron expressions and interval strings
+// ============================================================
+
+// isCronExpr returns true when s looks like a 5-field cron expression or @shorthand.
+func isCronExpr(s string) bool {
+	return strings.HasPrefix(s, "@") || len(strings.Fields(s)) == 5
+}
+
+// parseInterval parses strings like "30m", "6h", "24h", "7d".
+func parseInterval(s string) (time.Duration, error) {
+	s = strings.TrimSpace(strings.ToLower(s))
+	if strings.HasSuffix(s, "d") {
+		n, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+		if err != nil || n <= 0 {
+			return 0, fmt.Errorf("invalid interval %q", s)
+		}
+		return time.Duration(n) * 24 * time.Hour, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("invalid interval %q: %w", s, err)
+	}
+	return d, nil
+}
+
+// nextRunTime returns the next scheduled time after from.
+func nextRunTime(schedule string, from time.Time) (time.Time, error) {
+	if isCronExpr(schedule) {
+		return cronNext(schedule, from)
+	}
+	d, err := parseInterval(schedule)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return from.Add(d), nil
+}
+
+// cronNext computes the next time after from that matches the cron expression.
+// Supported: *, */n, n, n-m, n,m,o — for all five fields (min hour dom month dow).
+// Shorthands: @hourly @daily @midnight @weekly @monthly.
+func cronNext(expr string, from time.Time) (time.Time, error) {
+	expr = strings.TrimSpace(expr)
+	switch expr {
+	case "@hourly":
+		expr = "0 * * * *"
+	case "@daily", "@midnight":
+		expr = "0 0 * * *"
+	case "@weekly":
+		expr = "0 0 * * 0"
+	case "@monthly":
+		expr = "0 0 1 * *"
+	}
+	fields := strings.Fields(expr)
+	if len(fields) != 5 {
+		return time.Time{}, fmt.Errorf("cron expression must have 5 fields: %q", expr)
+	}
+	minutes, err := parseCronField(fields[0], 0, 59)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cron minute: %w", err)
+	}
+	hours, err := parseCronField(fields[1], 0, 23)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cron hour: %w", err)
+	}
+	doms, err := parseCronField(fields[2], 1, 31)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cron dom: %w", err)
+	}
+	months, err := parseCronField(fields[3], 1, 12)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cron month: %w", err)
+	}
+	dows, err := parseCronField(fields[4], 0, 6)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cron dow: %w", err)
+	}
+	// Walk minute-by-minute from (from+1m) up to ~4 years out.
+	t := from.Truncate(time.Minute).Add(time.Minute)
+	for range 2 * 365 * 24 * 60 {
+		if intIn(months, int(t.Month())) &&
+			(intIn(doms, t.Day()) || intIn(dows, int(t.Weekday()))) &&
+			intIn(hours, t.Hour()) &&
+			intIn(minutes, t.Minute()) {
+			return t, nil
+		}
+		t = t.Add(time.Minute)
+	}
+	return time.Time{}, fmt.Errorf("no next run found for cron %q", expr)
+}
+
+func parseCronField(s string, lo, hi int) ([]int, error) {
+	var out []int
+	for _, part := range strings.Split(s, ",") {
+		vals, err := parseCronPart(part, lo, hi)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, vals...)
+	}
+	// deduplicate + sort
+	seen := make(map[int]bool, len(out))
+	var uniq []int
+	for _, v := range out {
+		if !seen[v] {
+			seen[v] = true
+			uniq = append(uniq, v)
+		}
+	}
+	sort.Ints(uniq)
+	return uniq, nil
+}
+
+func parseCronPart(s string, lo, hi int) ([]int, error) {
+	if s == "*" {
+		return cronRange(lo, hi, 1), nil
+	}
+	if strings.HasPrefix(s, "*/") {
+		step, err := strconv.Atoi(s[2:])
+		if err != nil || step <= 0 {
+			return nil, fmt.Errorf("invalid step %q", s)
+		}
+		return cronRange(lo, hi, step), nil
+	}
+	if idx := strings.Index(s, "-"); idx > 0 {
+		a, err1 := strconv.Atoi(s[:idx])
+		b, err2 := strconv.Atoi(s[idx+1:])
+		if err1 != nil || err2 != nil || a < lo || b > hi || a > b {
+			return nil, fmt.Errorf("invalid range %q (must be %d-%d)", s, lo, hi)
+		}
+		return cronRange(a, b, 1), nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < lo || n > hi {
+		return nil, fmt.Errorf("invalid value %q (must be %d-%d)", s, lo, hi)
+	}
+	return []int{n}, nil
+}
+
+func cronRange(lo, hi, step int) []int {
+	r := make([]int, 0, (hi-lo)/step+1)
+	for i := lo; i <= hi; i += step {
+		r = append(r, i)
+	}
+	return r
+}
+
+func intIn(s []int, v int) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// ============================================================
+// PID file
+// ============================================================
+
+func writePIDFile(path string) error {
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(fmt.Sprintf("%d\n", os.Getpid())), 0644)
+}
+
+func removePIDFile(path string) {
+	if path != "" {
+		os.Remove(path) //nolint:errcheck
+	}
+}
+
+// ============================================================
+// Multi-job config loading for daemon mode
+// ============================================================
+
+// buildConfig converts a merged key-value map into a *Config with all defaults applied.
+// Used both by parseFlags (for single-run mode) and loadJobConfigs (for daemon mode).
+func buildConfig(fc map[string]string) *Config {
+	cfg := &Config{
+		LogDir:          getConfigDefault(fc, "LOG_DIR", defaultDir),
+		Pattern:         getConfigDefault(fc, "PATTERN", "*.log"),
+		ParallelJobs:    getConfigDefaultInt(fc, "PARALLEL_JOBS", defaultJobs),
+		OldLogsDir:      getConfigDefault(fc, "OLD_LOGS_DIR", ""),
+		ExcludeFile:     getConfigDefault(fc, "EXCLUDE_FILE", ""),
+		DateFormat:      getConfigDefault(fc, "DATE_FORMAT", "date"),
+		DryRun:          getConfigDefaultBool(fc, "DRY_RUN", false),
+		Encrypt:         getConfigDefaultBool(fc, "ENCRYPT", false),
+		EncryptPassword: getConfigDefault(fc, "ENCRYPT_PASSWORD", ""),
+		EncryptPassHash: getConfigDefault(fc, "ENCRYPT_PASSWORD_HASH", ""),
+		LogFile:         getConfigDefault(fc, "LOG_FILE", defaultLogFile),
+		LogLevel:        parseLogLevel(getConfigDefault(fc, "LOG_LEVEL", "info")),
+		Schedule:        getConfigDefault(fc, "SCHEDULE", ""),
+		PIDFile:         getConfigDefault(fc, "PID_FILE", defaultPIDFile),
+		DiskCriticalPct: getConfigDefaultInt(fc, "DISK_CRITICAL_PERCENT", defaultDiskCriticalPct),
+		DiskMinFreeMB:   int64(getConfigDefaultInt(fc, "DISK_MIN_FREE_MB", defaultDiskMinFreeMB)),
+		DiskCheckSec:    getConfigDefaultInt(fc, "DISK_CHECK_INTERVAL", defaultDiskCheckSec),
+		// Cloud backup
+		CloudProvider:       getConfigDefault(fc, "CLOUD_PROVIDER", ""),
+		CloudSource:         getConfigDefault(fc, "CLOUD_SOURCE", ""),
+		CloudDestination:    getConfigDefault(fc, "CLOUD_DESTINATION", ""),
+		CloudDays:           getConfigDefaultInt(fc, "CLOUD_DAYS", 1),
+		CloudParallel:       getConfigDefaultInt(fc, "CLOUD_PARALLEL", 4),
+		CloudTimeout:        getConfigDefaultInt(fc, "CLOUD_TIMEOUT", 300),
+		CloudAWSProfile:     getConfigDefault(fc, "CLOUD_AWS_PROFILE", ""),
+		CloudAWSRegion:      getConfigDefault(fc, "CLOUD_AWS_REGION", ""),
+		CloudGCPProject:     getConfigDefault(fc, "CLOUD_GCP_PROJECT", ""),
+		CloudGCPCredentials: getConfigDefault(fc, "CLOUD_GCP_CREDENTIALS", ""),
+		CloudOnSchedule:     getConfigDefaultBool(fc, "CLOUD_BACKUP_ON_SCHEDULE", false),
+		CloudOnPanic:        getConfigDefaultBool(fc, "CLOUD_BACKUP_ON_PANIC", false),
+	}
+	cfg.Parallel = cfg.ParallelJobs > 1
+	cfg.LogDir = strings.TrimSuffix(cfg.LogDir, "/")
+	now := time.Now()
+	cfg.DateSuffix = now.Format("20060102")
+	cfg.BackupDate = cfg.DateSuffix
+	// Default cloud source to the old_logs directory for this job.
+	if cfg.CloudSource == "" {
+		if cfg.OldLogsDir != "" {
+			cfg.CloudSource = cfg.OldLogsDir
+		} else {
+			cfg.CloudSource = cfg.LogDir + "/old_logs"
+		}
+	}
+	return cfg
+}
+
+// loadJobConfigs loads global.conf as defaults, then each conf.d/*.conf file as an
+// independent rotation job that inherits those defaults.
+func loadJobConfigs() []*Config {
+	baseFC := make(map[string]string)
+	loadConfigFile(mainConfigFile, baseFC)
+
+	var jobs []*Config
+
+	// The base config itself is a job if it has a schedule.
+	base := buildConfig(baseFC)
+	base.JobName = "global"
+	if base.Schedule != "" {
+		jobs = append(jobs, base)
+	}
+
+	files, _ := filepath.Glob(filepath.Join(configDropinDir, "*.conf"))
+	sort.Strings(files)
+	for _, f := range files {
+		fc := make(map[string]string, len(baseFC))
+		for k, v := range baseFC {
+			fc[k] = v
+		}
+		loadConfigFile(f, fc)
+		job := buildConfig(fc)
+		job.JobName = strings.TrimSuffix(filepath.Base(f), ".conf")
+		jobs = append(jobs, job)
+	}
+	return jobs
+}
+
+// ============================================================
+// Cloud backup integration
+// ============================================================
+
+// runCloudBackup invokes the appropriate cloud backup script as a subprocess.
+// panic=true means we're in emergency mode (disk critical); panic=false means post-schedule.
+// Manual use of global-aws-backup / global-gcp-backup CLI is unaffected — those tools
+// remain fully independent and callable directly by the user at any time.
+func runCloudBackup(cfg *Config, emergency bool) {
+	if cfg.CloudProvider == "" || cfg.CloudDestination == "" {
+		return
+	}
+	if emergency && !cfg.CloudOnPanic {
+		return
+	}
+	if !emergency && !cfg.CloudOnSchedule {
+		return
+	}
+
+	var prog string
+	switch strings.ToLower(cfg.CloudProvider) {
+	case "aws":
+		prog = "global-aws-backup"
+	case "gcp":
+		prog = "global-gcp-backup"
+	default:
+		logError("Job [%s]: unknown CLOUD_PROVIDER %q (must be aws or gcp)", cfg.JobName, cfg.CloudProvider)
+		return
+	}
+
+	args := []string{
+		"--source", cfg.CloudSource,
+		"--destination", cfg.CloudDestination,
+		"--days", strconv.Itoa(cfg.CloudDays),
+		"--parallel", strconv.Itoa(cfg.CloudParallel),
+		"--timeout", strconv.Itoa(cfg.CloudTimeout),
+	}
+	if cfg.CloudAWSProfile != "" {
+		args = append(args, "--profile", cfg.CloudAWSProfile)
+	}
+	if cfg.CloudAWSRegion != "" {
+		args = append(args, "--region", cfg.CloudAWSRegion)
+	}
+	if cfg.CloudGCPProject != "" {
+		args = append(args, "--project", cfg.CloudGCPProject)
+	}
+	if cfg.CloudGCPCredentials != "" {
+		args = append(args, "--credentials", cfg.CloudGCPCredentials)
+	}
+
+	mode := "scheduled"
+	if emergency {
+		mode = "PANIC"
+	}
+	logInfo("Job [%s]: starting %s cloud backup (%s) → %s", cfg.JobName, mode, prog, cfg.CloudDestination)
+
+	cmd := exec.Command(prog, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		logError("Job [%s]: cloud backup failed: %v", cfg.JobName, err)
+	} else {
+		logInfo("Job [%s]: cloud backup completed", cfg.JobName)
+	}
+}
+
+// ============================================================
+// Daemon runner
+// ============================================================
+
+type daemonJob struct {
+	cfg     *Config
+	nextRun time.Time
+}
+
+func runDaemon(jobs []*Config, once bool) {
+	if len(jobs) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: no rotation jobs found in config files")
+		os.Exit(1)
+	}
+
+	if err := writePIDFile(jobs[0].PIDFile); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not write PID file %s: %v\n", jobs[0].PIDFile, err)
+	}
+	defer removePIDFile(jobs[0].PIDFile)
+
+	logInfo("global-logrotate daemon v%s starting with %d job(s)", version, len(jobs))
+
+	// Validate schedules and compute initial next-run times.
+	djobs := make([]*daemonJob, 0, len(jobs))
+	for _, cfg := range jobs {
+		if cfg.Schedule == "" {
+			logInfo("Job [%s] has no SCHEDULE — skipping in daemon mode", cfg.JobName)
+			continue
+		}
+		if _, err := nextRunTime(cfg.Schedule, time.Now()); err != nil {
+			logError("Invalid SCHEDULE %q for job [%s]: %v", cfg.Schedule, cfg.JobName, err)
+			continue
+		}
+		nr, _ := nextRunTime(cfg.Schedule, time.Now())
+		djobs = append(djobs, &daemonJob{cfg: cfg, nextRun: nr})
+		logInfo("Job [%s] dir=%s  schedule=%q  next=%s",
+			cfg.JobName, cfg.LogDir, cfg.Schedule, nr.Format("2006-01-02 15:04:05"))
+	}
+
+	if len(djobs) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: no jobs with valid SCHEDULE found")
+		os.Exit(1)
+	}
+
+	if once {
+		for _, dj := range djobs {
+			executeJob(dj.cfg, false)
+		}
+		return
+	}
+
+	// Signal handling for graceful shutdown.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
+
+	// Disk pressure alerts — buffered so the monitor never blocks.
+	diskAlert := make(chan *Config, len(djobs))
+	go monitorDisk(djobs, diskAlert, stop)
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stop:
+			logInfo("Daemon received shutdown signal")
+			return
+
+		case cfg := <-diskAlert:
+			logError("DISK CRITICAL on %s — triggering emergency rotation + cloud panic backup", cfg.LogDir)
+			cfg.DateSuffix = time.Now().Format("20060102")
+			cfg.BackupDate = cfg.DateSuffix
+			executeJob(cfg, true) // emergency=true → triggers CLOUD_BACKUP_ON_PANIC if set
+			// Reset that job's next-run after emergency rotation.
+			for _, dj := range djobs {
+				if dj.cfg == cfg {
+					if nr, err := nextRunTime(cfg.Schedule, time.Now()); err == nil {
+						dj.nextRun = nr
+					}
+				}
+			}
+
+		case now := <-ticker.C:
+			for _, dj := range djobs {
+				if now.Before(dj.nextRun) {
+					continue
+				}
+				logInfo("Running scheduled job [%s]", dj.cfg.LogDir)
+				dj.cfg.DateSuffix = now.Format("20060102")
+				dj.cfg.BackupDate = dj.cfg.DateSuffix
+				executeJob(dj.cfg, false)
+				nr, err := nextRunTime(dj.cfg.Schedule, now)
+				if err != nil {
+					logError("Schedule error for job [%s]: %v", dj.cfg.JobName, err)
+					continue
+				}
+				dj.nextRun = nr
+				logInfo("Job [%s] next run: %s", dj.cfg.JobName, nr.Format("2006-01-02 15:04:05"))
+			}
+		}
+	}
+}
+
+// executeJob runs a rotation job and optionally triggers cloud backup after.
+// emergency=true means the job was triggered by disk pressure (panic mode).
+func executeJob(cfg *Config, emergency bool) {
+	excludePatterns := loadExcludePatterns(cfg.ExcludeFile)
+	files := findLogFiles(cfg.LogDir, cfg.Pattern, excludePatterns)
+	if len(files) == 0 {
+		logInfo("Job [%s]: no files found in %s", cfg.JobName, cfg.LogDir)
+		return
+	}
+	logInfo("Job [%s]: rotating %d file(s) in %s (emergency=%v)", cfg.JobName, len(files), cfg.LogDir, emergency)
+	if cfg.Parallel {
+		rotateParallel(files, cfg)
+	} else {
+		rotateSequential(files, cfg)
+	}
+	runCloudBackup(cfg, emergency)
+}
+
+func monitorDisk(jobs []*daemonJob, alert chan<- *Config, stop <-chan os.Signal) {
+	if len(jobs) == 0 {
+		return
+	}
+	interval := time.Duration(jobs[0].cfg.DiskCheckSec) * time.Second
+	if interval < time.Second {
+		interval = 60 * time.Second
+	}
+	lastAlert := make(map[*Config]time.Time)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			for _, dj := range jobs {
+				cfg := dj.cfg
+				_, freeMB, usedPct, err := diskStats(cfg.LogDir)
+				if err != nil {
+					logDebug("diskStats %s: %v", cfg.LogDir, err)
+					continue
+				}
+				logDebug("Disk [%s]: %.1f%% used, %d MB free", cfg.JobName, usedPct, freeMB)
+				if usedPct >= float64(cfg.DiskCriticalPct) {
+					if time.Since(lastAlert[cfg]) < 5*time.Minute {
+						continue
+					}
+					lastAlert[cfg] = time.Now()
+					select {
+					case alert <- cfg:
+					default:
+					}
+				} else if freeMB < cfg.DiskMinFreeMB {
+					logError("Disk low [%s]: %d MB free (min %d MB)", cfg.JobName, freeMB, cfg.DiskMinFreeMB)
+				}
+			}
+		}
+	}
+}
+
 func main() {
 	cfg := parseFlags()
+
+	// Daemon mode: load all job configs and run the scheduling loop.
+	if cfg.Daemon || cfg.DaemonOnce {
+		jobs := loadJobConfigs()
+		if len(jobs) == 0 {
+			fmt.Fprintln(os.Stderr, "Error: no jobs found in config (add SCHEDULE to global.conf or conf.d files)")
+			os.Exit(1)
+		}
+		if err := initLogger(jobs[0].LogFile, jobs[0].LogLevel); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Could not initialize logging: %v\n", err)
+		} else {
+			defer closeLogger()
+		}
+		runDaemon(jobs, cfg.DaemonOnce)
+		return
+	}
 
 	// Initialize logger (skip for special modes that output to stdout)
 	if cfg.ReadFile == "" && !cfg.PassGen && !cfg.PassReset && len(os.Args) > 1 {
@@ -621,22 +1177,7 @@ func loadConfigFile(path string, config map[string]string) {
 
 func parseFlags() *Config {
 	fileConfig := loadConfigFiles()
-
-	cfg := &Config{
-		LogDir:          getConfigDefault(fileConfig, "LOG_DIR", defaultDir),
-		Pattern:         getConfigDefault(fileConfig, "PATTERN", "*.log"),
-		ParallelJobs:    getConfigDefaultInt(fileConfig, "PARALLEL_JOBS", defaultJobs),
-		OldLogsDir:      getConfigDefault(fileConfig, "OLD_LOGS_DIR", ""),
-		ExcludeFile:     getConfigDefault(fileConfig, "EXCLUDE_FILE", ""),
-		DateFormat:      getConfigDefault(fileConfig, "DATE_FORMAT", "date"),
-		DryRun:          getConfigDefaultBool(fileConfig, "DRY_RUN", false),
-		Encrypt:         getConfigDefaultBool(fileConfig, "ENCRYPT", false),
-		EncryptPassword: getConfigDefault(fileConfig, "ENCRYPT_PASSWORD", ""),
-		EncryptPassHash: getConfigDefault(fileConfig, "ENCRYPT_PASSWORD_HASH", ""),
-		// Logging config
-		LogFile:  getConfigDefault(fileConfig, "LOG_FILE", defaultLogFile),
-		LogLevel: parseLogLevel(getConfigDefault(fileConfig, "LOG_LEVEL", "info")),
-	}
+	cfg := buildConfig(fileConfig)
 
 	var useFullTime, useDateOnly, showVersion, showHelp, enableEncrypt bool
 	var readFile string
@@ -657,6 +1198,8 @@ func parseFlags() *Config {
 	flag.BoolVar(&passReset, "pass-reset", false, "Reset/change encryption password")
 	flag.StringVar(&cfg.LogFile, "log-file", cfg.LogFile, "Path to log file")
 	flag.StringVar(&logLevel, "log-level", "", "Log level: error, info, debug")
+	flag.BoolVar(&cfg.Daemon, "daemon", false, "Run as daemon; reads SCHEDULE from config files")
+	flag.BoolVar(&cfg.DaemonOnce, "daemon-once", false, "Run all scheduled jobs once then exit (for systemd timers)")
 	flag.BoolVar(&showVersion, "version", false, "Show version")
 	flag.BoolVar(&showHelp, "h", false, "Show help")
 
@@ -677,16 +1220,22 @@ func parseFlags() *Config {
 	cfg.PassGen = passGen
 	cfg.PassReset = passReset
 
+	cfg.ReadFile = readFile
+	cfg.PassGen = passGen
+	cfg.PassReset = passReset
+
 	if enableEncrypt {
 		cfg.Encrypt = true
 	}
-
-	// Override log level from command line
 	if logLevel != "" {
 		cfg.LogLevel = parseLogLevel(logLevel)
 	}
 
-	// If special modes, return early
+	// Daemon flags bypass the rest of the normal single-run validation.
+	if cfg.Daemon || cfg.DaemonOnce {
+		return cfg
+	}
+
 	if cfg.ReadFile != "" || cfg.PassGen || cfg.PassReset {
 		return cfg
 	}
@@ -1016,6 +1565,21 @@ func rotateLogFile(logFile string, cfg *Config) {
 	// has no business being executable, and inheriting setuid from the source
 	// would be a privilege-escalation risk.
 	archiveMode := mode &^ (os.ModeSetuid | os.ModeSetgid) & 0666
+
+	// Disk space guard: ensure the backup directory has enough room for this archive.
+	// If the disk is too full to write even the compressed bytes, skip this file
+	// rather than filling the disk entirely and crashing the host.
+	if cfg.DiskMinFreeMB > 0 {
+		if _, freeMB, _, diskErr := diskStats(backupDir); diskErr == nil {
+			needMB := int64(len(finalData))/(1024*1024) + 1
+			if freeMB-needMB < cfg.DiskMinFreeMB {
+				fmt.Fprintf(os.Stderr, "SKIP (disk full): %s — only %d MB free, need %d MB buffer\n",
+					logFile, freeMB, cfg.DiskMinFreeMB)
+				logError("Skipping archive for %s: %d MB free < %d MB minimum", logFile, freeMB, cfg.DiskMinFreeMB)
+				return
+			}
+		}
+	}
 
 	// Write to a temp file first. os.Rename is atomic on the same filesystem,
 	// so a crash between write and rename leaves the original file intact.
