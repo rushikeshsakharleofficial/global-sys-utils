@@ -3,10 +3,10 @@ Version: {{VERSION}}
 Section: admin
 Priority: optional
 Architecture: {{ARCH}}
-Depends:
+Depends: systemd, python3 (>= 3.8), python3-pip
 Recommends: bash-completion
 Suggests: zsh
-Maintainer: Rushikesh Sakharle <rushikesh.sakharle@linuxhardened.com>
+Maintainer: Rushikesh Sakharle <rishiananya123@gmail.com>
 Homepage: https://github.com/rushikeshsakharleofficial/global-sys-utils
 Description: Fast parallel log rotation utility
  global-logrotate is a high-performance log rotation utility written in Go.

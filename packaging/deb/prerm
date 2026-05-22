@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+if command -v systemctl >/dev/null 2>&1 && systemctl is-system-running --quiet 2>/dev/null; then
+    systemctl stop  global-logrotate.service       2>/dev/null || true
+    systemctl stop  global-logrotate-once.timer    2>/dev/null || true
+    systemctl disable global-logrotate.service     2>/dev/null || true
+    systemctl disable global-logrotate-once.timer  2>/dev/null || true
+fi
+
+exit 0

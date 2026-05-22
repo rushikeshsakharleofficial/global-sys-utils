@@ -1,0 +1,31 @@
+[Unit]
+Description=Global Log Rotate Daemon
+Documentation=man:global-logrotate(1)
+After=local-fs.target
+ConditionPathExists=/etc/global-sys-utils/global.conf
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/global-logrotate --daemon
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=60
+
+# Give current rotation time to finish before hard kill
+KillMode=process
+KillSignal=SIGTERM
+
+# Journal integration — own log file is also written via LOG_FILE in config
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=global-logrotate
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectHome=yes
+# Allow writes to: log dirs, pid file, archive dirs, config drop-ins
+ReadWritePaths=/var/log /run /etc/global-sys-utils
+
+[Install]
+WantedBy=multi-user.target

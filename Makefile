@@ -19,8 +19,9 @@ BINARY := $(NAME)
 BUILDDIR := build
 RPMDIR := $(BUILDDIR)/rpm
 DEBDIR := $(BUILDDIR)/deb
+SYSTEMDDIR := packaging/systemd
 
-.PHONY: all build build-all clean rpm deb rpm-all deb-all install man packages-all
+.PHONY: all build build-all clean rpm deb rpm-all deb-all install man packages-all test
 
 all: build
 
@@ -57,7 +58,7 @@ man:
 
 install: build man
 	@echo "Installing $(NAME)..."
-	@install -Dm755 $(BUILDDIR)/$(BINARY) /usr/local/bin/$(BINARY)
+	@install -Dm755 $(BUILDDIR)/$(BINARY) /usr/bin/$(BINARY)
 	@mkdir -p /etc/global-sys-utils/global.conf.d
 	@install -Dm644 config/global.conf /etc/global-sys-utils/global.conf
 	@install -Dm644 config/global.conf.d/example.conf /etc/global-sys-utils/global.conf.d/example.conf
@@ -69,13 +70,23 @@ install: build man
 	@install -Dm644 completions/_global-logrotate /usr/share/zsh/vendor-completions/_$(BINARY)
 	@# Install Python cloud tools
 	@for script in $(PY_SCRIPTS); do \
-		install -Dm755 $$script /usr/local/bin/$$(basename $$script); \
+		install -Dm755 $$script /usr/bin/$$(basename $$script); \
 	done
-	@echo "Installed to /usr/local/bin/$(BINARY)"
+	@# Install systemd units
+	@mkdir -p /usr/lib/systemd/system
+	@install -Dm644 $(SYSTEMDDIR)/global-logrotate.service      /usr/lib/systemd/system/
+	@install -Dm644 $(SYSTEMDDIR)/global-logrotate-once.service /usr/lib/systemd/system/
+	@install -Dm644 $(SYSTEMDDIR)/global-logrotate-once.timer   /usr/lib/systemd/system/
+	@systemctl daemon-reload 2>/dev/null || true
+	@echo "Installed to /usr/bin/$(BINARY)"
 	@echo "Cloud tools installed: global-aws-backup global-aws-restore global-gcp-backup global-gcp-restore"
 	@echo "Config installed to /etc/global-sys-utils/"
 	@echo "Shell completions installed for bash and zsh"
+	@echo "Systemd units installed to /usr/lib/systemd/system/"
 	@echo "Install Python dependencies: pip install -r requirements.txt"
+	@echo ""
+	@echo "To start daemon:  systemctl enable --now global-logrotate"
+	@echo "To use timer:     systemctl enable --now global-logrotate-once.timer"
 
 # RPM Package for specific architecture
 # Usage: make rpm GOARCH=amd64 or make rpm GOARCH=arm64
@@ -97,6 +108,12 @@ endif
 	@cp completions/_global-logrotate $(RPMDIR)/$(RPM_ARCH)/SOURCES/
 	@cp config/global.conf $(RPMDIR)/$(RPM_ARCH)/SOURCES/
 	@cp config/global.conf.d/example.conf $(RPMDIR)/$(RPM_ARCH)/SOURCES/
+	@cp $(SYSTEMDDIR)/global-logrotate.service      $(RPMDIR)/$(RPM_ARCH)/SOURCES/
+	@cp $(SYSTEMDDIR)/global-logrotate-once.service $(RPMDIR)/$(RPM_ARCH)/SOURCES/
+	@cp $(SYSTEMDDIR)/global-logrotate-once.timer   $(RPMDIR)/$(RPM_ARCH)/SOURCES/
+	@# Python cloud tools + requirements
+	@for script in $(PY_SCRIPTS); do cp $$script $(RPMDIR)/$(RPM_ARCH)/SOURCES/$$(basename $$script); done
+	@cp requirements.txt $(RPMDIR)/$(RPM_ARCH)/SOURCES/
 	@cp packaging/rpm/$(NAME).spec $(RPMDIR)/$(RPM_ARCH)/SPECS/
 	@rpmbuild --define "_topdir $(PWD)/$(RPMDIR)/$(RPM_ARCH)" \
 		--define "_version $(VERSION)" \
@@ -137,6 +154,8 @@ endif
 	@mkdir -p $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/share/bash-completion/completions
 	@mkdir -p $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/share/zsh/vendor-completions
 	@mkdir -p $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/etc/global-sys-utils/global.conf.d
+	@mkdir -p $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/lib/systemd/system
+	@mkdir -p $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/share/global-sys-utils
 	@cp $(BUILDDIR)/$(BINARY)-$(GOARCH) $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/bin/$(BINARY)
 	@cp man/$(NAME).1 $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/share/man/man1/
 	@gzip -f $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/share/man/man1/$(NAME).1 2>/dev/null || true
@@ -144,12 +163,23 @@ endif
 	@cp completions/_global-logrotate $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/share/zsh/vendor-completions/_$(BINARY)
 	@cp config/global.conf $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/etc/global-sys-utils/
 	@cp config/global.conf.d/example.conf $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/etc/global-sys-utils/global.conf.d/
+	@cp $(SYSTEMDDIR)/global-logrotate.service      $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/lib/systemd/system/
+	@cp $(SYSTEMDDIR)/global-logrotate-once.service $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/lib/systemd/system/
+	@cp $(SYSTEMDDIR)/global-logrotate-once.timer   $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/lib/systemd/system/
+	@# Python cloud tools + requirements
+	@for script in $(PY_SCRIPTS); do \
+		cp $$script $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/bin/$$(basename $$script); \
+		chmod 755 $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/bin/$$(basename $$script); \
+	done
+	@cp requirements.txt $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/share/global-sys-utils/
 	@sed -e "s/{{VERSION}}/$(VERSION)/g" \
 		-e "s/{{ARCH}}/$(DEB_ARCH)/g" \
 		packaging/deb/control > $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/DEBIAN/control
 	@cp packaging/deb/postinst $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/DEBIAN/
+	@cp packaging/deb/prerm    $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/DEBIAN/
 	@cp packaging/deb/conffiles $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/DEBIAN/ 2>/dev/null || true
 	@chmod 755 $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/DEBIAN/postinst
+	@chmod 755 $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/DEBIAN/prerm
 	@dpkg-deb --build $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)
 	@echo "DEB package created: $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH).deb"
 
@@ -173,6 +203,13 @@ packages-all: build-all deb-all rpm-all
 	@echo ""
 	@echo "RPM packages:"
 	@find $(RPMDIR) -name "*.rpm" -exec ls -lh {} \; 2>/dev/null || true
+
+test:
+	@echo "=== Go tests (race detector) ==="
+	go test ./cmd/global-logrotate/ -race -count=1 -v
+	@echo ""
+	@echo "=== Python utility tests ==="
+	python3 -m pytest tests/test_utils.py -v
 
 clean:
 	@rm -rf $(BUILDDIR)

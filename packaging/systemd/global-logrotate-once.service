@@ -1,0 +1,15 @@
+[Unit]
+Description=Global Log Rotate (one-shot)
+Documentation=man:global-logrotate(1)
+After=local-fs.target
+ConditionPathExists=/etc/global-sys-utils/global.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/global-logrotate --daemon-once
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=global-logrotate
+NoNewPrivileges=yes
+ProtectHome=yes
+ReadWritePaths=/var/log /run /etc/global-sys-utils
