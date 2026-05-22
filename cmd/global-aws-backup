@@ -19,7 +19,16 @@ from pathlib import Path
 from typing import Any
 
 import boto3
+from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import BotoCoreError, ClientError
+
+# Single-threaded S3 transfers: boto3 default spawns up to 10 threads per file,
+# each buffering an 8 MB chunk — brutal on small machines.
+_S3_TRANSFER_CONFIG = TransferConfig(
+    max_concurrency=1,
+    multipart_threshold=50 * 1024 * 1024,  # only multipart for files > 50 MB
+    multipart_chunksize=8 * 1024 * 1024,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +78,7 @@ def _upload(s3: Any, path: str, bucket: str, key: str, verify: bool, retries: in
             delay = min(2 ** (attempt - 2) + random.uniform(0, 0.5), 30)
             time.sleep(delay)
         try:
-            s3.upload_file(path, bucket, key)
+            s3.upload_file(path, bucket, key, Config=_S3_TRANSFER_CONFIG)
             if verify:
                 etag = s3.head_object(Bucket=bucket, Key=key)['ETag'].strip('"')
                 if '-' not in etag and etag != local_md5:
