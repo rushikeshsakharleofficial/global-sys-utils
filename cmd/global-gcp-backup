@@ -11,6 +11,7 @@ import random
 import re
 import socket
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -23,6 +24,76 @@ from google.cloud import storage
 logger = logging.getLogger(__name__)
 
 _DATE_RE = re.compile(r'\d{4}-\d{2}-\d{2}|\d{8}')
+
+
+class AdaptiveThrottle:
+    """Dynamically caps concurrent workers based on live CPU and memory usage."""
+
+    _MEM_HIGH = 80
+    _MEM_LOW  = 55
+    _CPU_HIGH = 85
+    _CPU_LOW  = 60
+    _POLL_SEC = 3
+
+    def __init__(self, min_workers: int = 1, max_workers: int = 1) -> None:
+        try:
+            import psutil as _p
+            self._psutil = _p
+        except ImportError:
+            self._psutil = None
+            logger.warning("psutil not installed — adaptive throttling disabled. pip install psutil")
+
+        self.min_workers = max(1, min_workers)
+        self.max_workers = max(self.min_workers, max_workers)
+
+        if self._psutil:
+            avail_mb = self._psutil.virtual_memory().available // (1024 * 1024)
+            initial = max(self.min_workers, min(self.max_workers, avail_mb // 100))
+        else:
+            initial = self.max_workers
+
+        self._target = initial
+        self._active = 0
+        self._cond   = threading.Condition(threading.Lock())
+        self._stop   = threading.Event()
+
+        if self._psutil:
+            t = threading.Thread(target=self._monitor, daemon=True, name="throttle-mon")
+            t.start()
+            logger.debug("adaptive throttle: initial=%d  min=%d  max=%d", initial, self.min_workers, self.max_workers)
+
+    def __enter__(self) -> AdaptiveThrottle:
+        with self._cond:
+            while self._active >= self._target:
+                self._cond.wait(timeout=1.0)
+            self._active += 1
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        with self._cond:
+            self._active -= 1
+            self._cond.notify_all()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def _monitor(self) -> None:
+        psutil = self._psutil
+        while not self._stop.wait(self._POLL_SEC):
+            cpu = psutil.cpu_percent(interval=0.5)
+            mem = psutil.virtual_memory().percent
+            with self._cond:
+                old = self._target
+                if mem > self._MEM_HIGH or cpu > self._CPU_HIGH:
+                    self._target = max(self.min_workers, self._target - 1)
+                elif mem < self._MEM_LOW and cpu < self._CPU_LOW:
+                    self._target = min(self.max_workers, self._target + 1)
+                if self._target != old:
+                    logger.info(
+                        "throttle: %d→%d workers  cpu=%.0f%%  mem=%.0f%%",
+                        old, self._target, cpu, mem,
+                    )
+                    self._cond.notify_all()
 
 
 def _extract_date(name: str) -> datetime | None:
@@ -61,6 +132,9 @@ def _upload(client: Any, path: str, bucket_name: str, blob_name: str, verify: bo
         try:
             bucket = client.bucket(bucket_name)
             blob = bucket.blob(blob_name)
+            # chunk_size forces resumable upload for files larger than one chunk,
+            # keeping only 8 MB in memory at a time instead of the whole file.
+            blob.chunk_size = 8 * 1024 * 1024
             blob.upload_from_filename(path, checksum='md5' if verify else None)
             return
         except (GoogleAPIError, Exception) as e:
@@ -86,7 +160,7 @@ def main() -> None:
     ap.add_argument('--days',        required=True, type=int,          help='Process files dated older than N days')
     ap.add_argument('--pattern',     default='*',                      help='Filename glob to include (default: *)')
     ap.add_argument('--exclude',     action='append', default=[],      help='Filename glob to exclude; repeatable', metavar='GLOB')
-    ap.add_argument('--parallel',    type=int, default=4,              help='Concurrent uploads (default: 4)')
+    ap.add_argument('--parallel',    type=int, default=4,              help='Max concurrent uploads; adaptive throttle may use fewer (default: 4)')
     ap.add_argument('--project',     default=None,                     help='GCP project ID')
     ap.add_argument('--credentials', default=None,                     help='Path to service account JSON key file')
     ap.add_argument('--retries',     type=int, default=3,              help='Upload retry count (default: 3)')
@@ -141,6 +215,8 @@ def main() -> None:
         client_kwargs['credentials'] = service_account.Credentials.from_service_account_file(args.credentials)
     client = storage.Client(**client_kwargs)
 
+    throttle = AdaptiveThrottle(min_workers=1, max_workers=args.parallel)
+
     def process(path: str) -> bool:
         blob_name = _object_path(path, prefix, hostname)
         try:
@@ -154,8 +230,15 @@ def main() -> None:
         logger.info("%s: %s -> gs://%s/%s", verb, path, bucket_name, blob_name)
         return True
 
-    with ThreadPoolExecutor(max_workers=args.parallel) as pool:
-        results = list(pool.map(process, candidates))
+    def _run(path: str) -> bool:
+        with throttle:
+            return process(path)
+
+    try:
+        with ThreadPoolExecutor(max_workers=args.parallel) as pool:
+            results = list(pool.map(_run, candidates))
+    finally:
+        throttle.stop()
 
     ok, fail = results.count(True), results.count(False)
     logger.info("\nDone: %d succeeded, %d failed", ok, fail)
