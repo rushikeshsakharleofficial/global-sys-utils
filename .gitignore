@@ -1,9 +1,15 @@
 # Build artifacts
 build/
+/global-logrotate
 *.exe
 *.dll
 *.so
 *.dylib
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
 
 # Pre-built packages (built by CI, not stored in repo)
 DEBS/
@@ -17,6 +23,7 @@ documents/
 # IDE
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"crypto/aes"
 	"crypto/cipher"
@@ -46,8 +47,10 @@ const (
 	LogLevelDebug
 )
 
-// Magic bytes to identify our encrypted format
-var encryptMagic = []byte("GLRE") // Global LogRotate Encrypted
+// encryptMagic identifies our encrypted file format: MAGIC(4)+SALT(32)+NONCE(12)+CIPHERTEXT
+const encryptMagicStr = "GLRE"
+
+var encryptMagic = []byte(encryptMagicStr)
 
 // Logger handles application logging
 type Logger struct {
@@ -78,6 +81,8 @@ type Config struct {
 	ReadFile        string
 	PassGen         bool
 	PassReset       bool
+	// BackupDate is computed once at startup so all files in a run use the same date.
+	BackupDate string
 	// Logging config
 	LogFile  string
 	LogLevel int
@@ -85,16 +90,14 @@ type Config struct {
 
 // initLogger initializes the global logger
 func initLogger(logFile string, level int) error {
-	// Create log directory if needed
 	logDir := filepath.Dir(logFile)
 	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return fmt.Errorf("failed to create log directory: %v", err)
+		return fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	// Open log file (append mode)
 	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open log file: %v", err)
+		return fmt.Errorf("failed to open log file: %w", err)
 	}
 
 	logger = &Logger{
@@ -113,30 +116,29 @@ func closeLogger() {
 	}
 }
 
-// logWrite writes a log entry
+// logWrite writes a log entry. String formatting happens outside the mutex to minimize lock hold time.
 func logWrite(level int, format string, args ...interface{}) {
 	if logger == nil || level > logger.level {
 		return
 	}
 
-	logger.mu.Lock()
-	defer logger.mu.Unlock()
-
 	levelStr := "INFO"
 	switch level {
 	case LogLevelError:
 		levelStr = "ERROR"
-	case LogLevelInfo:
-		levelStr = "INFO"
 	case LogLevelDebug:
 		levelStr = "DEBUG"
 	}
 
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	message := fmt.Sprintf(format, args...)
-	logLine := fmt.Sprintf("[%s] [%s] %s\n", timestamp, levelStr, message)
+	line := fmt.Sprintf("[%s] [%s] %s\n",
+		time.Now().Format("2006-01-02 15:04:05"),
+		levelStr,
+		fmt.Sprintf(format, args...),
+	)
 
-	logger.file.WriteString(logLine)
+	logger.mu.Lock()
+	logger.file.WriteString(line) //nolint:errcheck // logging errors are non-fatal
+	logger.mu.Unlock()
 }
 
 // Convenience logging functions
@@ -545,8 +547,9 @@ func generateRandomPassword(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
 	b := make([]byte, length)
 	if _, err := rand.Read(b); err != nil {
-		// Fallback to time-based if crypto/rand fails
-		b = []byte(fmt.Sprintf("%d", time.Now().UnixNano()))
+		// crypto/rand failure means the OS entropy source is unavailable — no safe fallback exists.
+		fmt.Fprintf(os.Stderr, "fatal: crypto/rand unavailable: %v\n", err)
+		os.Exit(1)
 	}
 	for i := range b {
 		b[i] = charset[int(b[i])%len(charset)]
@@ -705,6 +708,7 @@ func parseFlags() *Config {
 
 	cfg.Parallel = cfg.ParallelJobs > 1
 	cfg.LogDir = strings.TrimSuffix(cfg.LogDir, "/")
+	cfg.BackupDate = time.Now().Format("20060102")
 
 	return cfg
 }
@@ -924,7 +928,7 @@ func rotateLogFile(logFile string, cfg *Config) {
 		backupRoot = filepath.Join(logDir, "old_logs")
 	}
 
-	backupDir := filepath.Join(backupRoot, time.Now().Format("20060102"))
+	backupDir := filepath.Join(backupRoot, cfg.BackupDate)
 
 	// Determine final file extension
 	var archivedFile string
@@ -957,18 +961,15 @@ func rotateLogFile(logFile string, cfg *Config) {
 		return
 	}
 
-	// Read original file
-	data, err := os.ReadFile(logFile)
+	// Stream the file through gzip — avoids holding both original and compressed bytes in memory.
+	f, err := os.Open(logFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
 		logError("Error reading file %s: %v", logFile, err)
 		return
 	}
-
-	logDebug("Read %d bytes from %s", len(data), logFile)
-
-	// Compress with gzip
-	compressedData, err := compressGzip(data)
+	compressedData, err := compressGzip(f)
+	f.Close()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error compressing file: %v\n", err)
 		logError("Error compressing file %s: %v", logFile, err)
@@ -1045,25 +1046,26 @@ func rotateLogFile(logFile string, cfg *Config) {
 		logFile, archivedFile, originalSize, compressedSize, compressionRatio)
 }
 
-// compressGzip compresses data using gzip
-func compressGzip(data []byte) ([]byte, error) {
-	var buf strings.Builder
+// compressGzip reads from r and returns gzip-compressed bytes.
+// Uses io.Reader so callers can stream directly from a file without loading the full content.
+func compressGzip(r io.Reader) ([]byte, error) {
+	var buf bytes.Buffer
 	w := gzip.NewWriter(&buf)
-	_, err := w.Write(data)
-	if err != nil {
-		return nil, err
+	if _, err := io.Copy(w, r); err != nil {
+		w.Close()
+		return nil, fmt.Errorf("compressing: %w", err)
 	}
 	if err := w.Close(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("finalizing gzip stream: %w", err)
 	}
-	return []byte(buf.String()), nil
+	return buf.Bytes(), nil
 }
 
-// decompressGzip decompresses gzip data
+// decompressGzip decompresses gzip-compressed bytes.
 func decompressGzip(data []byte) ([]byte, error) {
-	r, err := gzip.NewReader(strings.NewReader(string(data)))
+	r, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating gzip reader: %w", err)
 	}
 	defer r.Close()
 	return io.ReadAll(r)
@@ -1074,39 +1076,33 @@ func deriveKey(password string, salt []byte) []byte {
 	return pbkdf2.Key([]byte(password), salt, iterations, keySize, sha256.New)
 }
 
-// encryptData encrypts data using AES-256-GCM
-// Format: MAGIC(4) + SALT(32) + NONCE(12) + CIPHERTEXT
+// encryptData encrypts plaintext with AES-256-GCM using a PBKDF2-derived key.
+// Output format: MAGIC(4) + SALT(32) + NONCE(12) + CIPHERTEXT+TAG
 func encryptData(plaintext []byte, password string) ([]byte, error) {
-	// Generate random salt
 	salt := make([]byte, saltSize)
 	if _, err := rand.Read(salt); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generating salt: %w", err)
 	}
 
-	// Derive key from password
 	key := deriveKey(password, salt)
 
-	// Create cipher
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating cipher: %w", err)
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating GCM: %w", err)
 	}
 
-	// Generate random nonce
 	nonce := make([]byte, nonceSize)
 	if _, err := rand.Read(nonce); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generating nonce: %w", err)
 	}
 
-	// Encrypt
 	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
 
-	// Combine: MAGIC + SALT + NONCE + CIPHERTEXT
 	result := make([]byte, 0, len(encryptMagic)+saltSize+nonceSize+len(ciphertext))
 	result = append(result, encryptMagic...)
 	result = append(result, salt...)
@@ -1116,49 +1112,40 @@ func encryptData(plaintext []byte, password string) ([]byte, error) {
 	return result, nil
 }
 
-// decryptData decrypts data using AES-256-GCM
+// decryptData decrypts AES-256-GCM data produced by encryptData.
+// Format: MAGIC(4) + SALT(32) + NONCE(12) + CIPHERTEXT+TAG
 func decryptData(data []byte, password string) ([]byte, error) {
-	minLen := len(encryptMagic) + saltSize + nonceSize + 16 // 16 = min GCM tag
+	minLen := len(encryptMagic) + saltSize + nonceSize + 16 // 16 = GCM tag
 	if len(data) < minLen {
-		return nil, fmt.Errorf("encrypted data too short")
+		return nil, fmt.Errorf("encrypted data too short (%d bytes)", len(data))
 	}
 
-	// Check magic
-	if string(data[:len(encryptMagic)]) != string(encryptMagic) {
-		return nil, fmt.Errorf("invalid encrypted file format")
+	if !bytes.Equal(data[:len(encryptMagic)], encryptMagic) {
+		return nil, fmt.Errorf("invalid encrypted file format: bad magic bytes")
 	}
 
 	offset := len(encryptMagic)
-
-	// Extract salt
 	salt := data[offset : offset+saltSize]
 	offset += saltSize
-
-	// Extract nonce
 	nonce := data[offset : offset+nonceSize]
 	offset += nonceSize
-
-	// Extract ciphertext
 	ciphertext := data[offset:]
 
-	// Derive key from password
 	key := deriveKey(password, salt)
 
-	// Create cipher
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating cipher: %w", err)
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating GCM: %w", err)
 	}
 
-	// Decrypt
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return nil, fmt.Errorf("decryption failed - incorrect password or corrupted file")
+		return nil, fmt.Errorf("decryption failed (wrong password or corrupted file): %w", err)
 	}
 
 	return plaintext, nil

@@ -1,24 +1,32 @@
 #!/usr/bin/env python3
 """Backup aged log files to AWS S3."""
 
+from __future__ import annotations
+
 import argparse
 import fnmatch
 import hashlib
+import logging
 import os
+import random
 import re
 import socket
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
+logger = logging.getLogger(__name__)
+
 _DATE_RE = re.compile(r'\d{4}-\d{2}-\d{2}|\d{8}')
 
 
-def _extract_date(name):
+def _extract_date(name: str) -> datetime | None:
     m = _DATE_RE.search(name)
     if not m:
         return None
@@ -31,24 +39,21 @@ def _extract_date(name):
     return None
 
 
-def _glob(name, pattern):
-    return fnmatch.fnmatch(name, pattern)
-
-
-def _parse_s3_url(url):
+def _parse_s3_url(url: str) -> tuple[str, str]:
     if not url.startswith('s3://'):
         sys.exit(f"ERROR: invalid S3 URL {url!r}: must start with s3://")
     bucket, _, prefix = url[5:].partition('/')
     return bucket, prefix.rstrip('/')
 
 
-def _object_key(path, prefix, hostname):
-    rel = os.path.dirname(path).lstrip('/')
-    parts = [p for p in (prefix, hostname, rel, os.path.basename(path)) if p]
+def _object_key(path: str, prefix: str, hostname: str) -> str:
+    p = Path(path)
+    rel = str(p.parent).lstrip('/')
+    parts = [part for part in (prefix, hostname, rel, p.name) if part]
     return '/'.join(parts)
 
 
-def _md5(path):
+def _md5(path: str) -> str:
     h = hashlib.md5()
     with open(path, 'rb') as f:
         for chunk in iter(lambda: f.read(65536), b''):
@@ -56,12 +61,13 @@ def _md5(path):
     return h.hexdigest()
 
 
-def _upload(s3, path, bucket, key, verify, retries):
+def _upload(s3: Any, path: str, bucket: str, key: str, verify: bool, retries: int) -> None:
     local_md5 = _md5(path) if verify else None
-    last_err = None
+    last_err: Exception | None = None
     for attempt in range(1, retries + 1):
         if attempt > 1:
-            time.sleep(2 ** (attempt - 2))
+            delay = min(2 ** (attempt - 2) + random.uniform(0, 0.5), 30)
+            time.sleep(delay)
         try:
             s3.upload_file(path, bucket, key)
             if verify:
@@ -71,10 +77,11 @@ def _upload(s3, path, bucket, key, verify, retries):
             return
         except (BotoCoreError, ClientError, ValueError) as e:
             last_err = e
+            logger.debug("upload attempt %d/%d failed for %s: %s", attempt, retries, key, e)
     raise RuntimeError(f"upload s3://{bucket}/{key} failed after {retries} attempt(s): {last_err}")
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(
         prog='global-aws-backup',
         description='Backup log files to AWS S3.',
@@ -98,21 +105,26 @@ def main():
     ap.add_argument('--copy',        action='store_true',              help='Copy files instead of moving (preserve source)')
     ap.add_argument('--no-verify',   action='store_true', dest='no_verify', help='Skip MD5 verification after upload')
     ap.add_argument('--dry-run',     action='store_true', dest='dry_run',   help='Print actions without making changes')
+    ap.add_argument('--verbose',     action='store_true',              help='Enable debug logging')
     args = ap.parse_args()
+
+    logging.basicConfig(format='%(message)s', level=logging.DEBUG if args.verbose else logging.INFO)
 
     bucket, prefix = _parse_s3_url(args.destination)
     hostname = socket.gethostname()
-    cutoff = (datetime.now(tz=timezone.utc)
-              .replace(hour=0, minute=0, second=0, microsecond=0)
-              - timedelta(days=args.days))
+    cutoff = (
+        datetime.now(tz=timezone.utc)
+        .replace(hour=0, minute=0, second=0, microsecond=0)
+        - timedelta(days=args.days)
+    )
 
-    candidates = []
+    candidates: list[str] = []
     for root, _, files in os.walk(args.source):
         for name in files:
-            path = os.path.join(root, name)
-            if not _glob(name, args.pattern):
+            if not fnmatch.fnmatch(name, args.pattern):
                 continue
-            if any(_glob(name, ex) or _glob(path, ex) for ex in args.exclude):
+            path = os.path.join(root, name)
+            if any(fnmatch.fnmatch(name, ex) or fnmatch.fnmatch(path, ex) for ex in args.exclude):
                 continue
             t = _extract_date(name)
             if t is None or t >= cutoff:
@@ -120,40 +132,40 @@ def main():
             candidates.append(path)
 
     if not candidates:
-        print(f"No files matching criteria found in {args.source}")
+        logger.info("No files matching criteria found in %s", args.source)
         sys.exit(0)
 
     action = 'copy' if args.copy else 'move'
-    print(f"Found {len(candidates)} file(s) to {action} (cutoff: {cutoff.strftime('%Y-%m-%d')})")
+    logger.info("Found %d file(s) to %s (cutoff: %s)", len(candidates), action, cutoff.strftime('%Y-%m-%d'))
 
     if args.dry_run:
         for path in candidates:
             key = _object_key(path, prefix, hostname)
-            print(f"[DRY-RUN] Would {action}: {path} -> s3://{bucket}/{key}")
-        print(f"\nTotal: {len(candidates)} file(s)")
+            logger.info("[DRY-RUN] Would %s: %s -> s3://%s/%s", action, path, bucket, key)
+        logger.info("\nTotal: %d file(s)", len(candidates))
         return
 
     session = boto3.Session(profile_name=args.profile, region_name=args.region)
     s3 = session.client('s3')
 
-    def process(path):
+    def process(path: str) -> bool:
         key = _object_key(path, prefix, hostname)
         try:
             _upload(s3, path, bucket, key, verify=not args.no_verify, retries=args.retries)
         except Exception as e:
-            print(f"ERROR: {path}: {e}", file=sys.stderr)
+            logger.error("%s: %s", path, e)
             return False
         verb = 'Copied' if args.copy else 'Moved'
         if not args.copy:
             os.remove(path)
-        print(f"{verb}: {path} -> s3://{bucket}/{key}")
+        logger.info("%s: %s -> s3://%s/%s", verb, path, bucket, key)
         return True
 
     with ThreadPoolExecutor(max_workers=args.parallel) as pool:
         results = list(pool.map(process, candidates))
 
     ok, fail = results.count(True), results.count(False)
-    print(f"\nDone: {ok} succeeded, {fail} failed")
+    logger.info("\nDone: %d succeeded, %d failed", ok, fail)
     if fail:
         sys.exit(1)
 

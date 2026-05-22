@@ -1,54 +1,57 @@
 #!/usr/bin/env python3
 """Restore log files from Google Cloud Storage."""
 
+from __future__ import annotations
+
 import argparse
 import fnmatch
+import logging
 import os
+import random
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 
-from google.cloud import storage
 from google.api_core.exceptions import GoogleAPIError
+from google.cloud import storage
+
+logger = logging.getLogger(__name__)
 
 
-def _glob(name, pattern):
-    return fnmatch.fnmatch(name, pattern)
-
-
-def _parse_gcs_url(url):
+def _parse_gcs_url(url: str) -> tuple[str, str]:
     if not url.startswith('gs://'):
         sys.exit(f"ERROR: invalid GCS URL {url!r}: must start with gs://")
     bucket, _, prefix = url[5:].partition('/')
     return bucket, prefix.rstrip('/')
 
 
-def _local_path(blob_name, prefix, dest, flatten):
+def _local_path(blob_name: str, prefix: str, dest: str, flatten: bool) -> str:
     if flatten:
-        return os.path.join(dest, os.path.basename(blob_name))
-    relative = blob_name.removeprefix(prefix).lstrip('/')
-    return os.path.join(dest, relative)
+        return str(Path(dest) / Path(blob_name).name)
+    return str(Path(dest) / blob_name.removeprefix(prefix).lstrip('/'))
 
 
-def _download(client, bucket_name, blob_name, dest_path, retries):
-    last_err = None
+def _download(client: Any, bucket_name: str, blob_name: str, dest_path: str, retries: int) -> None:
+    last_err: Exception | None = None
     for attempt in range(1, retries + 1):
         if attempt > 1:
-            time.sleep(2 ** (attempt - 2))
+            delay = min(2 ** (attempt - 2) + random.uniform(0, 0.5), 30)
+            time.sleep(delay)
         try:
             Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
-            bucket = client.bucket(bucket_name)
-            bucket.blob(blob_name).download_to_filename(dest_path)
+            client.bucket(bucket_name).blob(blob_name).download_to_filename(dest_path)
             return
         except (GoogleAPIError, Exception) as e:
             if os.path.exists(dest_path):
                 os.remove(dest_path)
             last_err = e
+            logger.debug("download attempt %d/%d failed for %s: %s", attempt, retries, blob_name, e)
     raise RuntimeError(f"download gs://{bucket_name}/{blob_name} failed after {retries} attempt(s): {last_err}")
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(
         prog='global-gcp-restore',
         description='Restore log files from Google Cloud Storage.',
@@ -70,11 +73,14 @@ def main():
     ap.add_argument('--retries',     type=int, default=3,         help='Download retry count (default: 3)')
     ap.add_argument('--flatten',     action='store_true',         help='Put all files directly in destination (no subdirs)')
     ap.add_argument('--dry-run',     action='store_true', dest='dry_run', help='Print actions without downloading anything')
+    ap.add_argument('--verbose',     action='store_true',         help='Enable debug logging')
     args = ap.parse_args()
+
+    logging.basicConfig(format='%(message)s', level=logging.DEBUG if args.verbose else logging.INFO)
 
     bucket_name, prefix = _parse_gcs_url(args.source)
 
-    client_kwargs = {}
+    client_kwargs: dict[str, Any] = {}
     if args.project:
         client_kwargs['project'] = args.project
     if args.credentials:
@@ -83,51 +89,51 @@ def main():
     client = storage.Client(**client_kwargs)
 
     list_prefix = (prefix + '/') if prefix else ''
-    print(f"Listing blobs under gs://{bucket_name}/{prefix} ...")
+    logger.info("Listing blobs under gs://%s/%s ...", bucket_name, prefix)
 
-    blobs = [b.name for b in client.list_blobs(bucket_name, prefix=list_prefix)]
+    blobs: list[str] = [b.name for b in client.list_blobs(bucket_name, prefix=list_prefix)]
 
-    candidates = []
+    candidates: list[str] = []
     for name in blobs:
-        base = os.path.basename(name)
-        if not _glob(base, args.pattern):
+        base = Path(name).name
+        if not fnmatch.fnmatch(base, args.pattern):
             continue
-        if any(_glob(base, ex) or _glob(name, ex) for ex in args.exclude):
+        if any(fnmatch.fnmatch(base, ex) or fnmatch.fnmatch(name, ex) for ex in args.exclude):
             continue
         candidates.append(name)
 
     if not candidates:
-        print("No blobs found matching criteria.")
+        logger.info("No blobs found matching criteria.")
         sys.exit(0)
-    print(f"Found {len(candidates)} blob(s) to restore")
+    logger.info("Found %d blob(s) to restore", len(candidates))
 
     if args.dry_run:
         for name in candidates:
             dest = _local_path(name, prefix, args.destination, args.flatten)
-            print(f"[DRY-RUN] Would download: gs://{bucket_name}/{name} -> {dest}")
-        print(f"\nTotal: {len(candidates)} blob(s)")
+            logger.info("[DRY-RUN] Would download: gs://%s/%s -> %s", bucket_name, name, dest)
+        logger.info("\nTotal: %d blob(s)", len(candidates))
         return
 
     os.makedirs(args.destination, exist_ok=True)
 
-    def process(blob_name):
+    def process(blob_name: str) -> bool:
         dest = _local_path(blob_name, prefix, args.destination, args.flatten)
         if os.path.exists(dest):
-            print(f"Skipping (exists): {dest}")
+            logger.info("Skipping (exists): %s", dest)
             return True
         try:
             _download(client, bucket_name, blob_name, dest, retries=args.retries)
         except Exception as e:
-            print(f"ERROR: {blob_name}: {e}", file=sys.stderr)
+            logger.error("%s: %s", blob_name, e)
             return False
-        print(f"Restored: gs://{bucket_name}/{blob_name} -> {dest}")
+        logger.info("Restored: gs://%s/%s -> %s", bucket_name, blob_name, dest)
         return True
 
     with ThreadPoolExecutor(max_workers=args.parallel) as pool:
         results = list(pool.map(process, candidates))
 
     ok, fail = results.count(True), results.count(False)
-    print(f"\nDone: {ok} succeeded, {fail} failed")
+    logger.info("\nDone: %d succeeded, %d failed", ok, fail)
     if fail:
         sys.exit(1)
 

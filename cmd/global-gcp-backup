@@ -1,24 +1,31 @@
 #!/usr/bin/env python3
 """Backup aged log files to Google Cloud Storage."""
 
+from __future__ import annotations
+
 import argparse
 import fnmatch
+import logging
 import os
+import random
 import re
 import socket
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
-from google.cloud import storage
 from google.api_core.exceptions import GoogleAPIError
-from google.api_core.retry import Retry
+from google.cloud import storage
+
+logger = logging.getLogger(__name__)
 
 _DATE_RE = re.compile(r'\d{4}-\d{2}-\d{2}|\d{8}')
 
 
-def _extract_date(name):
+def _extract_date(name: str) -> datetime | None:
     m = _DATE_RE.search(name)
     if not m:
         return None
@@ -31,28 +38,26 @@ def _extract_date(name):
     return None
 
 
-def _glob(name, pattern):
-    return fnmatch.fnmatch(name, pattern)
-
-
-def _parse_gcs_url(url):
+def _parse_gcs_url(url: str) -> tuple[str, str]:
     if not url.startswith('gs://'):
         sys.exit(f"ERROR: invalid GCS URL {url!r}: must start with gs://")
     bucket, _, prefix = url[5:].partition('/')
     return bucket, prefix.rstrip('/')
 
 
-def _object_path(path, prefix, hostname):
-    rel = os.path.dirname(path).lstrip('/')
-    parts = [p for p in (prefix, hostname, rel, os.path.basename(path)) if p]
+def _object_path(path: str, prefix: str, hostname: str) -> str:
+    p = Path(path)
+    rel = str(p.parent).lstrip('/')
+    parts = [part for part in (prefix, hostname, rel, p.name) if part]
     return '/'.join(parts)
 
 
-def _upload(client, path, bucket_name, blob_name, verify, retries):
-    last_err = None
+def _upload(client: Any, path: str, bucket_name: str, blob_name: str, verify: bool, retries: int) -> None:
+    last_err: Exception | None = None
     for attempt in range(1, retries + 1):
         if attempt > 1:
-            time.sleep(2 ** (attempt - 2))
+            delay = min(2 ** (attempt - 2) + random.uniform(0, 0.5), 30)
+            time.sleep(delay)
         try:
             bucket = client.bucket(bucket_name)
             blob = bucket.blob(blob_name)
@@ -60,10 +65,11 @@ def _upload(client, path, bucket_name, blob_name, verify, retries):
             return
         except (GoogleAPIError, Exception) as e:
             last_err = e
+            logger.debug("upload attempt %d/%d failed for %s: %s", attempt, retries, blob_name, e)
     raise RuntimeError(f"upload gs://{bucket_name}/{blob_name} failed after {retries} attempt(s): {last_err}")
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(
         prog='global-gcp-backup',
         description='Backup log files to Google Cloud Storage.',
@@ -87,21 +93,26 @@ def main():
     ap.add_argument('--copy',        action='store_true',              help='Copy files instead of moving (preserve source)')
     ap.add_argument('--no-verify',   action='store_true', dest='no_verify', help='Skip MD5 verification after upload')
     ap.add_argument('--dry-run',     action='store_true', dest='dry_run',   help='Print actions without making changes')
+    ap.add_argument('--verbose',     action='store_true',              help='Enable debug logging')
     args = ap.parse_args()
+
+    logging.basicConfig(format='%(message)s', level=logging.DEBUG if args.verbose else logging.INFO)
 
     bucket_name, prefix = _parse_gcs_url(args.destination)
     hostname = socket.gethostname()
-    cutoff = (datetime.now(tz=timezone.utc)
-              .replace(hour=0, minute=0, second=0, microsecond=0)
-              - timedelta(days=args.days))
+    cutoff = (
+        datetime.now(tz=timezone.utc)
+        .replace(hour=0, minute=0, second=0, microsecond=0)
+        - timedelta(days=args.days)
+    )
 
-    candidates = []
+    candidates: list[str] = []
     for root, _, files in os.walk(args.source):
         for name in files:
-            path = os.path.join(root, name)
-            if not _glob(name, args.pattern):
+            if not fnmatch.fnmatch(name, args.pattern):
                 continue
-            if any(_glob(name, ex) or _glob(path, ex) for ex in args.exclude):
+            path = os.path.join(root, name)
+            if any(fnmatch.fnmatch(name, ex) or fnmatch.fnmatch(path, ex) for ex in args.exclude):
                 continue
             t = _extract_date(name)
             if t is None or t >= cutoff:
@@ -109,20 +120,20 @@ def main():
             candidates.append(path)
 
     if not candidates:
-        print(f"No files matching criteria found in {args.source}")
+        logger.info("No files matching criteria found in %s", args.source)
         sys.exit(0)
 
     action = 'copy' if args.copy else 'move'
-    print(f"Found {len(candidates)} file(s) to {action} (cutoff: {cutoff.strftime('%Y-%m-%d')})")
+    logger.info("Found %d file(s) to %s (cutoff: %s)", len(candidates), action, cutoff.strftime('%Y-%m-%d'))
 
     if args.dry_run:
         for path in candidates:
             blob_name = _object_path(path, prefix, hostname)
-            print(f"[DRY-RUN] Would {action}: {path} -> gs://{bucket_name}/{blob_name}")
-        print(f"\nTotal: {len(candidates)} file(s)")
+            logger.info("[DRY-RUN] Would %s: %s -> gs://%s/%s", action, path, bucket_name, blob_name)
+        logger.info("\nTotal: %d file(s)", len(candidates))
         return
 
-    client_kwargs = {}
+    client_kwargs: dict[str, Any] = {}
     if args.project:
         client_kwargs['project'] = args.project
     if args.credentials:
@@ -130,24 +141,24 @@ def main():
         client_kwargs['credentials'] = service_account.Credentials.from_service_account_file(args.credentials)
     client = storage.Client(**client_kwargs)
 
-    def process(path):
+    def process(path: str) -> bool:
         blob_name = _object_path(path, prefix, hostname)
         try:
             _upload(client, path, bucket_name, blob_name, verify=not args.no_verify, retries=args.retries)
         except Exception as e:
-            print(f"ERROR: {path}: {e}", file=sys.stderr)
+            logger.error("%s: %s", path, e)
             return False
         verb = 'Copied' if args.copy else 'Moved'
         if not args.copy:
             os.remove(path)
-        print(f"{verb}: {path} -> gs://{bucket_name}/{blob_name}")
+        logger.info("%s: %s -> gs://%s/%s", verb, path, bucket_name, blob_name)
         return True
 
     with ThreadPoolExecutor(max_workers=args.parallel) as pool:
         results = list(pool.map(process, candidates))
 
     ok, fail = results.count(True), results.count(False)
-    print(f"\nDone: {ok} succeeded, {fail} failed")
+    logger.info("\nDone: %d succeeded, %d failed", ok, fail)
     if fail:
         sys.exit(1)
 

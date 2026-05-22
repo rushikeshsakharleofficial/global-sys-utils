@@ -13,7 +13,7 @@ ARCHS := amd64 arm64
 CMDS := global-logrotate
 
 # Python cloud tools (installed as executable scripts)
-PY_SCRIPTS := global-aws-backup global-aws-restore global-gcp-backup global-gcp-restore
+PY_SCRIPTS := cmd/global-aws-backup cmd/global-aws-restore cmd/global-gcp-backup cmd/global-gcp-restore
 
 BINARY := $(NAME)
 BUILDDIR := build
@@ -69,10 +69,10 @@ install: build man
 	@install -Dm644 completions/_global-logrotate /usr/share/zsh/vendor-completions/_$(BINARY)
 	@# Install Python cloud tools
 	@for script in $(PY_SCRIPTS); do \
-		install -Dm755 $$script /usr/local/bin/$$script; \
+		install -Dm755 $$script /usr/local/bin/$$(basename $$script); \
 	done
 	@echo "Installed to /usr/local/bin/$(BINARY)"
-	@echo "Cloud tools installed: $(PY_SCRIPTS)"
+	@echo "Cloud tools installed: global-aws-backup global-aws-restore global-gcp-backup global-gcp-restore"
 	@echo "Config installed to /etc/global-sys-utils/"
 	@echo "Shell completions installed for bash and zsh"
 	@echo "Install Python dependencies: pip install -r requirements.txt"
