@@ -1,0 +1,17 @@
+[Unit]
+Description=Run Global Log Rotate daily at 02:00
+Documentation=man:global-logrotate(1)
+Requires=global-logrotate-once.service
+
+[Timer]
+# Default schedule — override per-host with a drop-in:
+#   /etc/systemd/system/global-logrotate-once.timer.d/schedule.conf
+OnCalendar=*-*-* 02:00:00
+# Spread load by up to 5 minutes (avoids thundering herd on multi-host deploys)
+RandomizedDelaySec=300
+# Run immediately at next opportunity if a run was missed (e.g. host was down)
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

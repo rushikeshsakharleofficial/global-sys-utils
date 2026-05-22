@@ -9,6 +9,9 @@ URL:            https://github.com/rushikeshsakharleofficial/global-sys-utils
 # Binary is pre-compiled, no build needed
 AutoReqProv:    no
 
+Requires(post): systemd
+Requires(preun): systemd
+Requires(postun): systemd
 Recommends:     bash-completion
 Suggests:       zsh
 
@@ -32,12 +35,16 @@ mkdir -p %{buildroot}/usr/share/man/man1
 mkdir -p %{buildroot}/usr/share/bash-completion/completions
 mkdir -p %{buildroot}/usr/share/zsh/vendor-completions
 mkdir -p %{buildroot}/etc/global-sys-utils/global.conf.d
+mkdir -p %{buildroot}/usr/lib/systemd/system
 install -m 755 %{_sourcedir}/global-logrotate %{buildroot}/usr/bin/
 install -m 644 %{_sourcedir}/global-logrotate.1.gz %{buildroot}/usr/share/man/man1/
 install -m 644 %{_sourcedir}/global-logrotate.bash %{buildroot}/usr/share/bash-completion/completions/%{name}
 install -m 644 %{_sourcedir}/_global-logrotate %{buildroot}/usr/share/zsh/vendor-completions/_%{name}
 install -m 644 %{_sourcedir}/global.conf %{buildroot}/etc/global-sys-utils/
 install -m 644 %{_sourcedir}/example.conf %{buildroot}/etc/global-sys-utils/global.conf.d/
+install -m 644 %{_sourcedir}/global-logrotate.service %{buildroot}/usr/lib/systemd/system/
+install -m 644 %{_sourcedir}/global-logrotate-once.service %{buildroot}/usr/lib/systemd/system/
+install -m 644 %{_sourcedir}/global-logrotate-once.timer %{buildroot}/usr/lib/systemd/system/
 
 %files
 %attr(755, root, root) /usr/bin/%{name}
@@ -48,9 +55,19 @@ install -m 644 %{_sourcedir}/example.conf %{buildroot}/etc/global-sys-utils/glob
 %config(noreplace) %attr(644, root, root) /etc/global-sys-utils/global.conf.d/example.conf
 %dir /etc/global-sys-utils
 %dir /etc/global-sys-utils/global.conf.d
+%attr(644, root, root) /usr/lib/systemd/system/global-logrotate.service
+%attr(644, root, root) /usr/lib/systemd/system/global-logrotate-once.service
+%attr(644, root, root) /usr/lib/systemd/system/global-logrotate-once.timer
 
 %post
 /usr/bin/mandb -q 2>/dev/null || true
+%systemd_post global-logrotate.service global-logrotate-once.timer
+
+%preun
+%systemd_preun global-logrotate.service global-logrotate-once.timer
+
+%postun
+%systemd_postun_with_restart global-logrotate.service
 
 %changelog
 * Sat Feb 01 2026 Rushikesh Sakharle <rushikesh.sakharle@linuxhardened.com> - 2.1.15-1

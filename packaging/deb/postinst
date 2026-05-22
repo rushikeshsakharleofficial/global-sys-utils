@@ -6,4 +6,25 @@ if command -v mandb >/dev/null 2>&1; then
     mandb -q 2>/dev/null || true
 fi
 
+# Reload systemd and enable the daemon service
+if command -v systemctl >/dev/null 2>&1 && systemctl is-system-running --quiet 2>/dev/null; then
+    systemctl daemon-reload || true
+
+    # Enable the long-running daemon (does NOT start it — admin must configure SCHEDULE first)
+    systemctl enable global-logrotate.service 2>/dev/null || true
+
+    # Enable the timer-based oneshot (disabled by default; admin opts in)
+    # To use: systemctl enable --now global-logrotate-once.timer
+    echo ""
+    echo "global-logrotate installed."
+    echo ""
+    echo "  Option A — long-running daemon (recommended for disk monitoring):"
+    echo "    1. Add SCHEDULE to /etc/global-sys-utils/global.conf or conf.d/"
+    echo "    2. systemctl start global-logrotate"
+    echo ""
+    echo "  Option B — systemd timer (one-shot, no disk monitoring):"
+    echo "    systemctl enable --now global-logrotate-once.timer"
+    echo ""
+fi
+
 exit 0

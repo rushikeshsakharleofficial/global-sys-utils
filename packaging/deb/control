@@ -3,7 +3,7 @@ Version: {{VERSION}}
 Section: admin
 Priority: optional
 Architecture: {{ARCH}}
-Depends:
+Depends: systemd
 Recommends: bash-completion
 Suggests: zsh
 Maintainer: Rushikesh Sakharle <rushikesh.sakharle@linuxhardened.com>
