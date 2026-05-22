@@ -1,56 +1,77 @@
 <div align="center">
 
-# global-sys-utils
+# global-sys-utils — Linux Log Rotation, Cloud Backup & Daemon Scheduler
 
-**High-performance log rotation with cloud backup, daemon scheduling, and disk-pressure protection.**
+**Automated log rotation for Linux with AWS S3 and Google Cloud Storage backup, AES-256-GCM encryption, systemd daemon scheduling, and real-time disk-pressure protection.**
 
 [![Build](https://github.com/rushikeshsakharleofficial/global-sys-utils/actions/workflows/packages.yml/badge.svg)](https://github.com/rushikeshsakharleofficial/global-sys-utils/actions/workflows/packages.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](go.mod)
+[![Python](https://img.shields.io/badge/Python-3.8+-3776AB.svg)](requirements.txt)
+[![Version](https://img.shields.io/badge/version-2.2.0-green.svg)](Makefile)
 
 </div>
 
 ---
 
-`global-sys-utils` is a suite of Linux system utilities for log management:
+`global-sys-utils` is an open-source Linux log management suite that combines fast parallel log rotation (Go), encrypted archiving, cloud offload to AWS S3 and Google Cloud Storage (Python), and a self-scheduling daemon with live disk monitoring — all driven by a simple INI configuration file and packaged as `.deb` / `.rpm` for production Linux systems.
 
-- **`global-logrotate`** — a Go binary that compresses, optionally encrypts (AES-256-GCM), and truncates log files. Runs on demand, on a cron schedule, or as a long-running daemon that monitors disk usage and triggers emergency rotation when space runs low.
-- **`global-aws-backup` / `global-aws-restore`** — Python scripts for moving aged log archives to and from AWS S3.
-- **`global-gcp-backup` / `global-gcp-restore`** — Python scripts for moving aged log archives to and from Google Cloud Storage.
-
-All tools are packaged as `.deb` and `.rpm` for Debian/Ubuntu and RHEL/CentOS/Fedora.
+**Keywords:** linux log rotation, logrotate alternative, AWS S3 log backup, Google Cloud Storage log archival, AES-256 log encryption, systemd log daemon, disk pressure monitoring, cron log rotation, RHEL Ubuntu log management, gzip log compression, parallel log rotation Go
 
 ---
 
 ## Table of Contents
 
-1. [Features](#features)
-2. [Requirements](#requirements)
-3. [Installation](#installation)
-4. [Quick Start](#quick-start)
-5. [global-logrotate](#global-logrotate)
-6. [Cloud Backup Tools](#cloud-backup-tools)
-7. [Daemon Mode](#daemon-mode)
-8. [Configuration Reference](#configuration-reference)
-9. [Build from Source](#build-from-source)
-10. [Testing](#testing)
-11. [Project Structure](#project-structure)
-12. [Security](#security)
-13. [License](#license)
+1. [Why global-sys-utils?](#why-global-sys-utils)
+2. [Features](#features)
+3. [Requirements](#requirements)
+4. [Installation](#installation)
+5. [Quick Start](#quick-start)
+6. [global-logrotate](#global-logrotate)
+7. [Cloud Backup Tools](#cloud-backup-tools)
+8. [Daemon Mode](#daemon-mode)
+9. [Configuration Reference](#configuration-reference)
+10. [Build from Source](#build-from-source)
+11. [Testing](#testing)
+12. [Project Structure](#project-structure)
+13. [Contributing](#contributing)
+14. [Security](#security)
+15. [License](#license)
+
+---
+
+## Why global-sys-utils?
+
+The standard `logrotate` daemon lacks cloud offload, built-in encryption, and real-time disk-pressure response. `global-sys-utils` fills that gap:
+
+| Capability | `logrotate` | `global-sys-utils` |
+|---|:---:|:---:|
+| Parallel rotation | ✗ | ✓ |
+| AES-256-GCM encryption | ✗ | ✓ |
+| AWS S3 backup | ✗ | ✓ |
+| Google Cloud Storage backup | ✗ | ✓ |
+| Emergency rotation on disk pressure | ✗ | ✓ |
+| Per-file disk space guard | ✗ | ✓ |
+| Daemon with live scheduling | limited | ✓ |
+| systemd service + timer units | limited | ✓ |
+| Cron expressions + intervals | via cron | built-in |
+| DEB + RPM packages | ✓ | ✓ |
 
 ---
 
 ## Features
 
-- **Parallel rotation** — rotate N files concurrently with `--parallel`
-- **AES-256-GCM encryption** — per-user password, stored as SHA-256 hash; credentials auto-loaded at runtime
-- **Atomic writes** — archive written to `.tmp` then renamed before the source is truncated; crash-safe
-- **Daemon mode** — `--daemon` / `--daemon-once` with cron or interval scheduling (`0 2 * * *`, `6h`, `@daily`)
-- **Real-time disk monitoring** — configurable threshold triggers immediate rotation when disk fills; per-file guard refuses to write an archive when free space is critically low
-- **Cloud integration in daemon** — automatically calls `global-aws-backup` or `global-gcp-backup` after scheduled rotation or on disk-pressure events
-- **Adaptive upload throttle** — concurrent uploads self-limit based on live CPU/RAM readings (psutil); prevents OOM on small VMs
-- **Per-application conf.d jobs** — each `/etc/global-sys-utils/global.conf.d/*.conf` file is an independent rotation job with its own schedule, directory, and cloud target
-- **systemd units** — long-running service and oneshot + timer variants included in packages
-- **DEB and RPM packages** — Python dependencies installed via `pip` during package post-install
+- **Parallel rotation** — rotate N log files concurrently; sorted by size for optimal throughput
+- **AES-256-GCM encryption** — per-user password stored only as SHA-256 hash; credentials auto-loaded at runtime
+- **Atomic writes** — compressed archive written to `.tmp` then renamed; crash during rotation leaves source file intact
+- **Daemon mode** — `--daemon` / `--daemon-once` with cron expressions (`0 2 * * *`), intervals (`6h`, `30m`), or aliases (`@daily`, `@hourly`)
+- **Real-time disk monitoring** — configurable threshold triggers immediate emergency rotation when disk fills
+- **Per-file disk guard** — refuses to write an archive when free space would drop below `DISK_MIN_FREE_MB`; source preserved
+- **Cloud integration** — daemon calls `global-aws-backup` or `global-gcp-backup` after scheduled rotation or on disk-pressure events
+- **Adaptive upload throttle** — concurrent cloud uploads self-limit based on live CPU / RAM readings; prevents OOM on small VMs
+- **conf.d job system** — each `/etc/global-sys-utils/global.conf.d/*.conf` is an independent rotation + cloud job
+- **systemd units** — long-running service and oneshot+timer variants bundled in packages
+- **DEB + RPM packaging** — Python dependencies installed via `pip3` during package post-install with PEP 668 compatibility
 
 ---
 
@@ -64,7 +85,7 @@ All tools are packaged as `.deb` and `.rpm` for Debian/Ubuntu and RHEL/CentOS/Fe
 | pip | 23+ recommended |
 | systemd | 232+ (optional, for daemon units) |
 
-Python runtime dependencies (installed automatically by package post-install):
+**Python runtime dependencies** (installed automatically by package post-install):
 
 ```text
 boto3>=1.34.0
@@ -81,7 +102,7 @@ psutil>=5.9.0
 
 Pre-built packages for every release are in the [`installers/`](installers/) directory.
 
-**Debian / Ubuntu:**
+**Debian / Ubuntu (amd64):**
 
 ```bash
 sudo dpkg -i installers/v2.2.0/global-logrotate_2.2.0-1_amd64.deb
@@ -95,11 +116,13 @@ sudo rpm -ivh installers/v2.2.0/global-logrotate-2.2.0-1.x86_64.rpm
 
 **ARM64 packages** (`aarch64` / `arm64`) are in the same directory.
 
-Both installers place binaries in `/usr/bin/`, config files in `/etc/global-sys-utils/`, systemd units in `/usr/lib/systemd/system/`, and run `pip3 install` for the Python dependencies automatically.
+Both installers:
+- Place binaries in `/usr/bin/`
+- Install config files to `/etc/global-sys-utils/`
+- Install systemd units to `/usr/lib/systemd/system/`
+- Run `pip3 install` for Python dependencies automatically
 
 ### Manual Python dependency install
-
-If post-install pip fails or you install from source:
 
 ```bash
 pip3 install -r requirements.txt
@@ -112,27 +135,27 @@ pip3 install -r requirements.txt
 ### One-shot log rotation
 
 ```bash
-# Rotate all *.log files in /var/log/myapp, date-stamp them, and compress
+# Rotate all *.log files in /var/log/myapp, date-stamp, and gzip-compress
 global-logrotate -D -p /var/log/myapp
 
-# Dry-run to preview what would be rotated
+# Preview without making changes
 global-logrotate -D -p /var/log/myapp -n
 ```
 
 ### Encrypt rotated logs
 
 ```bash
-# First-time: generate and store a password
+# First-time setup: generate and store a password
 global-logrotate --pass-gen
 
-# Rotate with encryption
+# Rotate with AES-256-GCM encryption
 global-logrotate --encrypt -D -p /var/log/myapp
 
-# Read an encrypted archive
+# Decompress and decrypt an archive to stdout
 global-logrotate --read /var/log/myapp/old_logs/20240115/app.log.20240115.gz.enc
 ```
 
-### Run as a systemd daemon
+### Start the daemon (systemd)
 
 ```bash
 # Add a schedule to the config
@@ -180,7 +203,7 @@ global-logrotate [OPTIONS]
 ```
 <old_logs_dir>/
 └── YYYYMMDD/
-    ├── app.log.YYYYMMDD.gz          # plain compressed
+    ├── app.log.YYYYMMDD.gz          # compressed
     └── error.log.YYYYMMDD.gz.enc    # compressed + encrypted
 ```
 
@@ -188,11 +211,9 @@ global-logrotate [OPTIONS]
 
 ## Cloud Backup Tools
 
-All four tools share a consistent interface. Use `--dry-run` to preview before acting.
+All four tools share a consistent CLI interface. Use `--dry-run` to preview before acting.
 
-### global-aws-backup
-
-Move aged log archives from a local directory to an S3 bucket.
+### global-aws-backup — Upload aged log archives to AWS S3
 
 ```bash
 global-aws-backup \
@@ -207,22 +228,20 @@ global-aws-backup \
 |---|---|---|
 | `--source <path>` | required | Local directory to scan |
 | `--destination <url>` | required | `s3://bucket[/prefix]` |
-| `--days <N>` | required | Only process files dated older than N days (must be ≥ 1) |
+| `--days <N>` | required | Only process files dated older than N days (≥ 1) |
 | `--pattern <glob>` | `*` | Filename glob to include |
 | `--exclude <glob>` | — | Glob to skip (repeatable) |
-| `--parallel <N>` | `4` | Max concurrent uploads; adaptive throttle may use fewer |
+| `--parallel <N>` | `4` | Max concurrent uploads |
 | `--timeout <sec>` | `300` | Per-operation timeout |
-| `--profile` | — | AWS profile name |
+| `--profile` | — | AWS named profile |
 | `--region` | — | AWS region |
-| `--retries <N>` | `3` | Retry count with exponential backoff |
+| `--retries <N>` | `3` | Retry count with exponential backoff + jitter |
 | `--copy` | — | Copy instead of move (preserve source) |
 | `--no-verify` | — | Skip MD5 checksum after upload |
 | `--dry-run` | — | Print actions without uploading |
 | `--verbose` | — | Enable debug logging |
 
-### global-aws-restore
-
-Download archives from S3 back to local storage.
+### global-aws-restore — Download archives from AWS S3
 
 ```bash
 global-aws-restore \
@@ -232,7 +251,7 @@ global-aws-restore \
   --flatten
 ```
 
-### global-gcp-backup
+### global-gcp-backup — Upload aged log archives to Google Cloud Storage
 
 ```bash
 global-gcp-backup \
@@ -242,7 +261,7 @@ global-gcp-backup \
   --project my-gcp-project
 ```
 
-### global-gcp-restore
+### global-gcp-restore — Download archives from Google Cloud Storage
 
 ```bash
 global-gcp-restore \
@@ -251,25 +270,25 @@ global-gcp-restore \
   --flatten
 ```
 
-All restore tools accept `--flatten` to place all downloaded files directly in the destination directory (no subdirectory tree).
+`--flatten` places all downloaded files directly in the destination directory, skipping subdirectory tree reconstruction.
 
 ---
 
 ## Daemon Mode
 
-`--daemon` starts a scheduling loop that persists indefinitely, monitors disk usage, and runs jobs from the config files.
+`--daemon` starts a persistent scheduling loop with real-time disk monitoring.
 
-### Enable daemon via systemd
+### Enable via systemd
 
 ```bash
-# Option A — long-running daemon (disk monitoring + scheduling)
+# Option A — long-running daemon (includes disk monitoring)
 sudo systemctl enable --now global-logrotate
 
-# Option B — systemd timer (no disk monitoring)
+# Option B — systemd timer (schedule managed by systemd, no disk monitoring)
 sudo systemctl enable --now global-logrotate-once.timer
 ```
 
-### Override the timer schedule without editing the unit
+### Override timer schedule without editing the unit
 
 ```bash
 sudo mkdir -p /etc/systemd/system/global-logrotate-once.timer.d/
@@ -289,31 +308,29 @@ sudo systemctl daemon-reload
 | Interval | `6h` | Every 6 hours |
 | Interval | `30m` | Every 30 minutes |
 | Interval | `7d` | Weekly |
-| Alias | `@daily` | Same as `0 0 * * *` |
-| Alias | `@hourly` | Same as `0 * * * *` |
-| Alias | `@weekly` | Same as `0 0 * * 0` |
-| Alias | `@monthly` | Same as `0 0 1 * *` |
+| `@daily` | `@daily` | `0 0 * * *` |
+| `@hourly` | `@hourly` | `0 * * * *` |
+| `@weekly` | `@weekly` | `0 0 * * 0` |
+| `@monthly` | `@monthly` | `0 0 1 * *` |
 
-### Disk pressure
+### Disk pressure behaviour
 
-| Key | Default | Behaviour |
-|---|---|---|
-| `DISK_CRITICAL_PERCENT` | `90` | Trigger emergency rotation immediately when disk reaches this % |
-| `DISK_MIN_FREE_MB` | `200` | Refuse to write an archive if free space would drop below this |
-| `DISK_CHECK_INTERVAL` | `60` | Seconds between disk checks |
-
-When disk reaches `DISK_CRITICAL_PERCENT`, the daemon rotates affected jobs immediately, then optionally ships logs to the cloud if `CLOUD_BACKUP_ON_PANIC = true` is set for that job.
+| Threshold | Key | Default | Action |
+|---|---|---|---|
+| Emergency rotation | `DISK_CRITICAL_PERCENT` | `90` | Immediately rotates all jobs for that directory |
+| Cloud panic backup | `CLOUD_BACKUP_ON_PANIC` | `false` | Ships archives to cloud after emergency rotation |
+| Archive write guard | `DISK_MIN_FREE_MB` | `200` | Skips writing archive; source file preserved |
 
 ---
 
 ## Configuration Reference
 
-Main config: `/etc/global-sys-utils/global.conf`
-Drop-in jobs: `/etc/global-sys-utils/global.conf.d/*.conf`
+| File | Purpose |
+|---|---|
+| `/etc/global-sys-utils/global.conf` | Global defaults for all jobs |
+| `/etc/global-sys-utils/global.conf.d/*.conf` | Per-app rotation jobs (each file = one independent job in daemon mode) |
 
-In **daemon mode**, each `.conf` file in `global.conf.d/` is treated as an independent rotation job that inherits defaults from `global.conf`. A file without `SCHEDULE` is ignored by the daemon but still effective for on-demand runs.
-
-### Rotation
+### Rotation keys
 
 | Key | Default | Description |
 |---|---|---|
@@ -322,26 +339,21 @@ In **daemon mode**, each `.conf` file in `global.conf.d/` is treated as an indep
 | `OLD_LOGS_DIR` | `<logdir>/old_logs` | Archive output root |
 | `EXCLUDE_FILE` | — | Path to file with one exclude glob per line |
 | `PARALLEL_JOBS` | `4` | Concurrent rotations |
-| `DATE_FORMAT` | `date` | `date` (YYYYMMDD) or `full` (YYYYMMDDTHH:MM:SS) |
+| `DATE_FORMAT` | `date` | `date` (YYYYMMDD) or `full` (timestamp) |
 | `DRY_RUN` | `false` | Log actions without changes |
 | `ENCRYPT` | `false` | AES-256-GCM encryption |
 
-### Scheduling (daemon)
+### Daemon + disk keys
 
 | Key | Default | Description |
 |---|---|---|
-| `SCHEDULE` | — | Cron expression, interval, or `@alias` |
+| `SCHEDULE` | — | Cron, interval, or `@alias` |
 | `PID_FILE` | `/run/global-logrotate.pid` | PID file path |
-
-### Disk safety
-
-| Key | Default | Description |
-|---|---|---|
 | `DISK_CRITICAL_PERCENT` | `90` | Emergency rotation threshold |
 | `DISK_MIN_FREE_MB` | `200` | Minimum free MB to write archive |
 | `DISK_CHECK_INTERVAL` | `60` | Disk check interval (seconds) |
 
-### Cloud backup (daemon)
+### Cloud backup keys
 
 | Key | Default | Description |
 |---|---|---|
@@ -355,31 +367,31 @@ In **daemon mode**, each `.conf` file in `global.conf.d/` is treated as an indep
 | `CLOUD_AWS_REGION` | — | AWS region |
 | `CLOUD_GCP_PROJECT` | — | GCP project ID |
 | `CLOUD_GCP_CREDENTIALS` | — | Path to GCP service account JSON |
-| `CLOUD_BACKUP_ON_SCHEDULE` | `false` | Run cloud backup after each scheduled rotation |
-| `CLOUD_BACKUP_ON_PANIC` | `false` | Run cloud backup when disk hits critical threshold |
+| `CLOUD_BACKUP_ON_SCHEDULE` | `false` | Run cloud backup after each rotation |
+| `CLOUD_BACKUP_ON_PANIC` | `false` | Run cloud backup on disk-critical event |
 
-### Logging
+### Logging keys
 
 | Key | Default | Description |
 |---|---|---|
 | `LOG_FILE` | `/var/log/global-sys-utils/global-logrotate.log` | Log output path |
 | `LOG_LEVEL` | `info` | `error` \| `info` \| `debug` |
 
-### Per-app conf.d example
+### Full per-app example
 
 ```ini
 # /etc/global-sys-utils/global.conf.d/nginx.conf
-LOG_DIR      = /var/log/nginx
-PATTERN      = *.log
-SCHEDULE     = 0 2 * * *
+LOG_DIR       = /var/log/nginx
+PATTERN       = *.log
+SCHEDULE      = 0 2 * * *
 PARALLEL_JOBS = 2
 
 DISK_CRITICAL_PERCENT = 85
 DISK_MIN_FREE_MB      = 500
 
-CLOUD_PROVIDER          = aws
-CLOUD_DESTINATION       = s3://my-bucket/nginx-logs
-CLOUD_AWS_REGION        = us-east-1
+CLOUD_PROVIDER           = aws
+CLOUD_DESTINATION        = s3://my-bucket/nginx-logs
+CLOUD_AWS_REGION         = us-east-1
 CLOUD_BACKUP_ON_SCHEDULE = true
 CLOUD_BACKUP_ON_PANIC    = true
 ```
@@ -396,30 +408,20 @@ CLOUD_BACKUP_ON_PANIC    = true
 
 ### Commands
 
-```bash
-# Build binary for current architecture
-make build
+| Command | Description |
+|---|---|
+| `make build` | Build binary for current architecture |
+| `make build-all` | Build for amd64 and arm64 |
+| `make deb` | Build DEB package (native arch) |
+| `make deb GOARCH=arm64` | Build DEB for arm64 |
+| `make rpm` | Build RPM package (native arch) |
+| `make rpm GOARCH=amd64` | Build RPM for amd64 |
+| `make packages-all` | Build all packages for all architectures |
+| `make install` | Install to `/usr/bin/` and `/etc/` (requires root) |
+| `make test` | Run Go + Python test suites |
+| `make clean` | Remove build artifacts |
 
-# Build for amd64 and arm64
-make build-all
-
-# Build DEB package (native arch)
-make deb
-
-# Build RPM package (native arch)
-make rpm
-
-# Build all packages for all architectures
-make packages-all
-
-# Install to /usr/bin (requires root)
-sudo make install
-
-# Remove build artifacts
-make clean
-```
-
-CI triggers automatically on push to `main` when files under `cmd/`, `packaging/`, `config/`, `completions/`, or `man/` change. Built packages are committed to `installers/v<VERSION>/`.
+CI triggers automatically on push to `main` when files under `cmd/`, `packaging/`, `config/`, `completions/`, or `man/` change. Built packages are committed to `installers/v<VERSION>/` and a GitHub Release is created.
 
 ---
 
@@ -429,20 +431,21 @@ CI triggers automatically on push to `main` when files under `cmd/`, `packaging/
 make test
 ```
 
-This runs:
+**Go tests** (57 tests, race-detector clean):
 
-1. **Go unit tests** with the race detector (`go test ./cmd/global-logrotate/ -race`):
-   - Schedule parsing: cron fields, `cronNext`, interval strings, shorthands, error cases
-   - Compression: gzip roundtrip, empty input, corrupt input
-   - Encryption: AES-256-GCM roundtrip, wrong-password rejection, bad magic bytes, nondeterminism
-   - Rotation integration: basic, encrypted, dry-run, already-rotated idempotency, disk-guard, parallel (5 files × 3 workers), permission bit stripping
-   - Config helpers, `buildConfig` defaults and overrides, disk stats
+```bash
+go test ./cmd/global-logrotate/ -race -v
+```
 
-2. **Python utility tests** (`pytest tests/test_utils.py`):
-   - Date extraction, URL parsing, key/path construction, MD5 — no cloud SDK required
-   - `AdaptiveThrottle` concurrent cap enforcement
-   - Retry logic: N attempts on repeated failure, recovery on second attempt
-   - All cloud SDKs fully mocked; no credentials needed
+Covers: cron/interval schedule parsing, gzip roundtrip, AES-256-GCM encryption roundtrip (incl. wrong-password rejection, bad magic bytes), rotation integration (basic, encrypted, dry-run, already-rotated idempotency, disk guard, parallel, permission stripping), `buildConfig` defaults, disk stats.
+
+**Python tests** (41 tests, no cloud credentials required):
+
+```bash
+python3 -m pytest tests/test_utils.py -v
+```
+
+Covers: date extraction, S3/GCS URL parsing, object key construction, local path construction, MD5 hashing, `AdaptiveThrottle` concurrency cap, retry-on-failure logic. All cloud SDKs mocked.
 
 ---
 
@@ -451,29 +454,29 @@ This runs:
 ```
 global-sys-utils/
 ├── cmd/
-│   ├── global-logrotate/       # Go source for the log rotation binary
-│   │   ├── main.go
-│   │   └── main_test.go
-│   ├── global-aws-backup       # Python: upload aged logs to AWS S3
-│   ├── global-aws-restore      # Python: download logs from AWS S3
-│   ├── global-gcp-backup       # Python: upload aged logs to GCP GCS
-│   └── global-gcp-restore      # Python: download logs from GCP GCS
-├── completions/                # Bash and zsh completions for global-logrotate
+│   ├── global-logrotate/       # Go source — log rotation binary
+│   │   ├── main.go             # ~1 800 lines: rotation, daemon, encryption
+│   │   └── main_test.go        # 57 unit + integration tests
+│   ├── global-aws-backup       # Python — upload aged logs to AWS S3
+│   ├── global-aws-restore      # Python — download logs from AWS S3
+│   ├── global-gcp-backup       # Python — upload aged logs to GCP GCS
+│   └── global-gcp-restore      # Python — download logs from GCP GCS
+├── completions/                # Bash and zsh shell completions
 ├── config/
-│   ├── global.conf             # Main configuration (installed to /etc/global-sys-utils/)
+│   ├── global.conf             # Documented main config (installed to /etc/)
 │   └── global.conf.d/
-│       └── example.conf        # Annotated per-app job example
+│       └── example.conf        # Annotated per-app job template
 ├── installers/                 # Pre-built .deb and .rpm packages per release
 ├── man/
 │   └── global-logrotate.1      # Man page
 ├── packaging/
-│   ├── deb/                    # Debian packaging (control, postinst, prerm, conffiles)
+│   ├── deb/                    # Debian packaging (control, postinst, prerm)
 │   ├── rpm/                    # RPM spec
 │   └── systemd/                # systemd service and timer units
 ├── tests/
-│   └── test_utils.py           # Python utility tests
+│   └── test_utils.py           # 41 Python utility tests
 ├── go.mod
-├── requirements.txt            # Python runtime dependencies
+├── requirements.txt
 ├── Makefile
 └── LICENSE
 ```
@@ -482,13 +485,39 @@ global-sys-utils/
 
 ## Contributing
 
-1. Fork the repository and create a feature branch: `git checkout -b feature/my-change`
-2. Make changes, run `make test` — all tests must pass with the race detector clean
-3. For Go changes, run `go vet ./...` before committing
-4. Open a pull request against `main` with a clear description of what changed and why
-5. Package builds are triggered automatically by CI on merge to `main`
+Contributions are **fully open** — bug fixes, refactors, new features, architecture changes, documentation improvements, additional cloud providers, new packaging formats, tests, anything. No change is too large or too small.
 
-Bug reports and feature requests: open a [GitHub issue](https://github.com/rushikeshsakharleofficial/global-sys-utils/issues).
+### How to contribute
+
+1. **Fork** the repository
+2. **Create a branch** — any name works; use something descriptive like `feat/add-azure-backup` or `fix/retry-jitter`
+3. **Make your changes** — you can modify any file, restructure the codebase, add new tools, or change existing behaviour; there are no off-limits areas
+4. **Run the tests** before opening a PR:
+   ```bash
+   make test
+   go vet ./...
+   ```
+5. **Open a pull request** against `main` with a clear description of what changed and why
+
+### What we welcome
+
+- New cloud providers (Azure Blob Storage, MinIO, Backblaze B2, …)
+- New packaging formats (Arch Linux PKGBUILD, Homebrew formula, Docker image, …)
+- Performance improvements to the Go rotation engine
+- Additional Python utility improvements (progress bars, structured logging, …)
+- Expanded test coverage
+- Documentation and example improvements
+- Full rewrites or refactors if they improve the codebase
+- New configuration options and features
+- Security hardening
+
+### Guidelines
+
+- Keep `make test` passing (or fix the tests as part of your change)
+- For large architectural changes, open an issue first to discuss — not required, but helps coordinate
+- No CLA, no contributor agreement — contributions are accepted under the project's MIT License
+
+**Bug reports and feature requests:** open a [GitHub issue](https://github.com/rushikeshsakharleofficial/global-sys-utils/issues).
 
 ---
 
@@ -496,14 +525,14 @@ Bug reports and feature requests: open a [GitHub issue](https://github.com/rushi
 
 ### Encryption
 
-Log archives can be encrypted with AES-256-GCM. The plaintext password is never stored — only its SHA-256 hash is written to `/etc/global-sys-utils/global.conf.d/encryption.conf`. The password itself is saved to `~/.global-sys-utils/config/credentials.ini` (mode `0600`).
+Log archives are encrypted with AES-256-GCM. The plaintext password is never stored — only its SHA-256 hash is written to `/etc/global-sys-utils/global.conf.d/encryption.conf`. The password is stored in `~/.global-sys-utils/config/credentials.ini` (mode `0600`).
 
 ```bash
 global-logrotate --pass-gen     # initial setup
 global-logrotate --pass-reset   # change password
 ```
 
-Password sources are checked in this order: credentials file → `LOGROTATE_PASSWORD` environment variable → interactive prompt.
+Password resolution order: credentials file → `LOGROTATE_PASSWORD` env var → interactive prompt.
 
 ### Reporting vulnerabilities
 
@@ -514,3 +543,13 @@ Open a [GitHub Security Advisory](https://github.com/rushikeshsakharleofficial/g
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+<div align="center">
+
+**global-sys-utils** — Linux log rotation · AWS S3 backup · Google Cloud Storage backup · AES-256 encryption · systemd daemon · disk monitoring
+
+[Issues](https://github.com/rushikeshsakharleofficial/global-sys-utils/issues) · [Releases](https://github.com/rushikeshsakharleofficial/global-sys-utils/releases) · [License](LICENSE)
+
+</div>
