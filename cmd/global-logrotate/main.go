@@ -137,7 +137,9 @@ func logWrite(level int, format string, args ...interface{}) {
 	)
 
 	logger.mu.Lock()
-	logger.file.WriteString(line) //nolint:errcheck // logging errors are non-fatal
+	if _, err := logger.file.WriteString(line); err != nil {
+		fmt.Fprint(os.Stderr, line) // disk full or closed — fall back to stderr
+	}
 	logger.mu.Unlock()
 }
 
@@ -706,6 +708,11 @@ func parseFlags() *Config {
 		cfg.DateSuffix = time.Now().Format("20060102")
 	}
 
+	if cfg.ParallelJobs <= 0 {
+		fmt.Fprintln(os.Stderr, "Error: --parallel must be >= 1")
+		os.Exit(1)
+	}
+
 	cfg.Parallel = cfg.ParallelJobs > 1
 	cfg.LogDir = strings.TrimSuffix(cfg.LogDir, "/")
 	cfg.BackupDate = time.Now().Format("20060102")
@@ -822,7 +829,7 @@ func findLogFiles(logDir, pattern string, excludePatterns []string) []fileInfo {
 
 	err := filepath.WalkDir(logDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			logDebug("Error accessing path %s: %v", path, err)
+			logInfo("Skipping inaccessible path %s: %v", path, err)
 			return nil
 		}
 		if d.IsDir() {
@@ -888,6 +895,12 @@ func rotateParallel(files []fileInfo, cfg *Config) {
 		go func(path string) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Fprintf(os.Stderr, "panic processing %s: %v\n", path, r)
+					logError("panic processing %s: %v", path, r)
+				}
+			}()
 			rotateLogFile(path, cfg)
 		}(f.path)
 	}
@@ -999,28 +1012,42 @@ func rotateLogFile(logFile string, cfg *Config) {
 		finalData = compressedData
 	}
 
-	// Write archived file
-	if err := os.WriteFile(archivedFile, finalData, mode); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing archived file: %v\n", err)
-		logError("Error writing archived file %s: %v", archivedFile, err)
+	// Strip setuid/setgid/execute bits from the archive — a compressed log file
+	// has no business being executable, and inheriting setuid from the source
+	// would be a privilege-escalation risk.
+	archiveMode := mode &^ (os.ModeSetuid | os.ModeSetgid) & 0666
+
+	// Write to a temp file first. os.Rename is atomic on the same filesystem,
+	// so a crash between write and rename leaves the original file intact.
+	tmpFile := archivedFile + ".tmp"
+	if err := os.WriteFile(tmpFile, finalData, archiveMode); err != nil {
+		os.Remove(tmpFile) // clean up partial write
+		fmt.Fprintf(os.Stderr, "Error writing archive: %v\n", err)
+		logError("Error writing archive %s: %v", tmpFile, err)
 		return
 	}
 
-	// Truncate original file
+	if err := os.Rename(tmpFile, archivedFile); err != nil {
+		os.Remove(tmpFile)
+		fmt.Fprintf(os.Stderr, "Error finalizing archive: %v\n", err)
+		logError("Error finalizing archive %s: %v", archivedFile, err)
+		return
+	}
+
+	// Truncate original only after archive is safely on disk.
 	if err := os.Truncate(logFile, 0); err != nil {
 		fmt.Fprintf(os.Stderr, "Error truncating file: %v\n", err)
 		logError("Error truncating file %s: %v", logFile, err)
 		return
 	}
 
-	// Restore ownership
+	// Restore ownership and permissions; non-fatal but surfaced at INFO so
+	// operators running as non-root notice the degraded ownership.
 	if err := os.Chown(archivedFile, uid, gid); err != nil {
-		logDebug("Could not restore ownership on %s: %v", archivedFile, err)
+		logInfo("Could not restore ownership on %s: %v", archivedFile, err)
 	}
-
-	// Restore permissions
-	if err := os.Chmod(archivedFile, mode); err != nil {
-		logDebug("Could not restore permissions on %s: %v", archivedFile, err)
+	if err := os.Chmod(archivedFile, archiveMode); err != nil {
+		logInfo("Could not restore permissions on %s: %v", archivedFile, err)
 	}
 
 	// Get compressed/encrypted file size and calculate compression stats
@@ -1179,9 +1206,11 @@ func getEncryptionPassword(cfg *Config) string {
 			}
 			logDebug("Password from credentials file does not match hash")
 		} else {
-			cachedPassword = credPass
+			// No hash configured — cannot verify correctness, so don't cache.
+			// Re-reading the credentials file per file is cheap and avoids
+			// propagating a wrong password silently across all files.
 			logDebug("Password loaded from credentials file (no hash verification)")
-			return cachedPassword
+			return credPass
 		}
 	}
 
@@ -1196,9 +1225,9 @@ func getEncryptionPassword(cfg *Config) string {
 			fmt.Fprintf(os.Stderr, "Warning: LOGROTATE_PASSWORD does not match configured hash\n")
 			logError("LOGROTATE_PASSWORD environment variable does not match configured hash")
 		} else {
-			cachedPassword = envPass
+			// No hash — don't cache, same reasoning as credentials file path.
 			logDebug("Password loaded from environment variable (no hash verification)")
-			return cachedPassword
+			return envPass
 		}
 	}
 

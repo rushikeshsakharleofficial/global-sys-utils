@@ -17,7 +17,8 @@ from typing import Any
 
 import boto3
 from boto3.s3.transfer import TransferConfig
-from botocore.exceptions import BotoCoreError, ClientError
+from botocore.config import Config as BotocoreConfig
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,7 @@ def main() -> None:
     ap.add_argument('--profile',     default=None,                help='AWS profile name')
     ap.add_argument('--region',      default=None,                help='AWS region')
     ap.add_argument('--retries',     type=int, default=3,         help='Download retry count (default: 3)')
+    ap.add_argument('--timeout',     type=int, default=300,       help='Per-operation timeout in seconds (default: 300)')
     ap.add_argument('--flatten',     action='store_true',         help='Put all files directly in destination (no subdirs)')
     ap.add_argument('--dry-run',     action='store_true', dest='dry_run', help='Print actions without downloading anything')
     ap.add_argument('--verbose',     action='store_true',         help='Enable debug logging')
@@ -159,7 +161,12 @@ def main() -> None:
     bucket, prefix = _parse_s3_url(args.source)
 
     session = boto3.Session(profile_name=args.profile, region_name=args.region)
-    s3 = session.client('s3')
+    s3 = session.client('s3', config=BotocoreConfig(connect_timeout=30, read_timeout=args.timeout))
+
+    try:
+        s3.head_bucket(Bucket=bucket)
+    except (NoCredentialsError, ClientError) as e:
+        sys.exit(f"ERROR: cannot access s3://{bucket}: {e}")
 
     list_prefix = (prefix + '/') if prefix else ''
     logger.info("Listing objects under s3://%s/%s ...", bucket, prefix)

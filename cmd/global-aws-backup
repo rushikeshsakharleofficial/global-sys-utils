@@ -21,7 +21,8 @@ from typing import Any
 
 import boto3
 from boto3.s3.transfer import TransferConfig
-from botocore.exceptions import BotoCoreError, ClientError
+from botocore.config import Config as BotocoreConfig
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +192,7 @@ def main() -> None:
     ap.add_argument('--profile',     default=None,                     help='AWS profile name')
     ap.add_argument('--region',      default=None,                     help='AWS region')
     ap.add_argument('--retries',     type=int, default=3,              help='Upload retry count (default: 3)')
+    ap.add_argument('--timeout',     type=int, default=300,            help='Per-operation timeout in seconds (default: 300)')
     ap.add_argument('--copy',        action='store_true',              help='Copy files instead of moving (preserve source)')
     ap.add_argument('--no-verify',   action='store_true', dest='no_verify', help='Skip MD5 verification after upload')
     ap.add_argument('--dry-run',     action='store_true', dest='dry_run',   help='Print actions without making changes')
@@ -198,6 +200,9 @@ def main() -> None:
     args = ap.parse_args()
 
     logging.basicConfig(format='%(message)s', level=logging.DEBUG if args.verbose else logging.INFO)
+
+    if args.days <= 0:
+        ap.error("--days must be a positive integer")
 
     bucket, prefix = _parse_s3_url(args.destination)
     hostname = socket.gethostname()
@@ -235,7 +240,12 @@ def main() -> None:
         return
 
     session = boto3.Session(profile_name=args.profile, region_name=args.region)
-    s3 = session.client('s3')
+    s3 = session.client('s3', config=BotocoreConfig(connect_timeout=30, read_timeout=args.timeout))
+
+    try:
+        s3.head_bucket(Bucket=bucket)
+    except (NoCredentialsError, ClientError) as e:
+        sys.exit(f"ERROR: cannot access s3://{bucket}: {e}")
 
     throttle = AdaptiveThrottle(min_workers=1, max_workers=args.parallel)
 
@@ -248,8 +258,13 @@ def main() -> None:
             return False
         verb = 'Copied' if args.copy else 'Moved'
         if not args.copy:
-            os.remove(path)
-        logger.info("%s: %s -> s3://%s/%s", verb, path, bucket, key)
+            try:
+                os.remove(path)
+                logger.info("%s: %s -> s3://%s/%s", verb, path, bucket, key)
+            except OSError as e:
+                logger.warning("Uploaded but failed to delete source %s: %s", path, e)
+        else:
+            logger.info("%s: %s -> s3://%s/%s", verb, path, bucket, key)
         return True
 
     def _run(path: str) -> bool:

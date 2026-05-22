@@ -123,7 +123,7 @@ def _object_path(path: str, prefix: str, hostname: str) -> str:
     return '/'.join(parts)
 
 
-def _upload(client: Any, path: str, bucket_name: str, blob_name: str, verify: bool, retries: int) -> None:
+def _upload(client: Any, path: str, bucket_name: str, blob_name: str, verify: bool, retries: int, timeout: int) -> None:
     last_err: Exception | None = None
     for attempt in range(1, retries + 1):
         if attempt > 1:
@@ -135,9 +135,9 @@ def _upload(client: Any, path: str, bucket_name: str, blob_name: str, verify: bo
             # chunk_size forces resumable upload for files larger than one chunk,
             # keeping only 8 MB in memory at a time instead of the whole file.
             blob.chunk_size = 8 * 1024 * 1024
-            blob.upload_from_filename(path, checksum='md5' if verify else None)
+            blob.upload_from_filename(path, checksum='md5' if verify else None, timeout=timeout)
             return
-        except (GoogleAPIError, Exception) as e:
+        except Exception as e:
             last_err = e
             logger.debug("upload attempt %d/%d failed for %s: %s", attempt, retries, blob_name, e)
     raise RuntimeError(f"upload gs://{bucket_name}/{blob_name} failed after {retries} attempt(s): {last_err}")
@@ -164,6 +164,7 @@ def main() -> None:
     ap.add_argument('--project',     default=None,                     help='GCP project ID')
     ap.add_argument('--credentials', default=None,                     help='Path to service account JSON key file')
     ap.add_argument('--retries',     type=int, default=3,              help='Upload retry count (default: 3)')
+    ap.add_argument('--timeout',     type=int, default=300,            help='Per-operation timeout in seconds (default: 300)')
     ap.add_argument('--copy',        action='store_true',              help='Copy files instead of moving (preserve source)')
     ap.add_argument('--no-verify',   action='store_true', dest='no_verify', help='Skip MD5 verification after upload')
     ap.add_argument('--dry-run',     action='store_true', dest='dry_run',   help='Print actions without making changes')
@@ -171,6 +172,9 @@ def main() -> None:
     args = ap.parse_args()
 
     logging.basicConfig(format='%(message)s', level=logging.DEBUG if args.verbose else logging.INFO)
+
+    if args.days <= 0:
+        ap.error("--days must be a positive integer")
 
     bucket_name, prefix = _parse_gcs_url(args.destination)
     hostname = socket.gethostname()
@@ -215,18 +219,26 @@ def main() -> None:
         client_kwargs['credentials'] = service_account.Credentials.from_service_account_file(args.credentials)
     client = storage.Client(**client_kwargs)
 
+    try:
+        client.get_bucket(bucket_name)
+    except Exception as e:
+        sys.exit(f"ERROR: cannot access gs://{bucket_name}: {e}")
+
     throttle = AdaptiveThrottle(min_workers=1, max_workers=args.parallel)
 
     def process(path: str) -> bool:
         blob_name = _object_path(path, prefix, hostname)
         try:
-            _upload(client, path, bucket_name, blob_name, verify=not args.no_verify, retries=args.retries)
+            _upload(client, path, bucket_name, blob_name, verify=not args.no_verify, retries=args.retries, timeout=args.timeout)
         except Exception as e:
             logger.error("%s: %s", path, e)
             return False
         verb = 'Copied' if args.copy else 'Moved'
         if not args.copy:
-            os.remove(path)
+            try:
+                os.remove(path)
+            except OSError as e:
+                logger.warning("uploaded but failed to delete source %s: %s", path, e)
         logger.info("%s: %s -> gs://%s/%s", verb, path, bucket_name, blob_name)
         return True
 
