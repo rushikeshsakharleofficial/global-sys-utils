@@ -21,7 +21,7 @@ RPMDIR := $(BUILDDIR)/rpm
 DEBDIR := $(BUILDDIR)/deb
 SYSTEMDDIR := packaging/systemd
 
-.PHONY: all build build-all clean rpm deb rpm-all deb-all install man packages-all
+.PHONY: all build build-all clean rpm deb rpm-all deb-all install man packages-all test
 
 all: build
 
@@ -203,6 +203,13 @@ packages-all: build-all deb-all rpm-all
 	@echo ""
 	@echo "RPM packages:"
 	@find $(RPMDIR) -name "*.rpm" -exec ls -lh {} \; 2>/dev/null || true
+
+test:
+	@echo "=== Go tests (race detector) ==="
+	go test ./cmd/global-logrotate/ -race -count=1 -v
+	@echo ""
+	@echo "=== Python utility tests ==="
+	python3 -m pytest tests/test_utils.py -v
 
 clean:
 	@rm -rf $(BUILDDIR)
