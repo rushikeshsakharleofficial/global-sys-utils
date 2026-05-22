@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	version         = "2.1.15"
+	version         = "2.2.0"
 	defaultDir      = "/var/log/apps"
 	defaultJobs     = 4
 	mainConfigFile  = "/etc/global-sys-utils/global.conf"

@@ -121,10 +121,21 @@ fi
 %systemd_postun_with_restart global-logrotate.service
 
 %changelog
-* Thu May 22 2026 Rushikesh Sakharle <rishiananya123@gmail.com> - 2.1.15-1
-- Added daemon mode with cron/interval scheduling and disk monitoring
-- Added systemd service and timer units
-- Added cloud backup integration (AWS S3, GCP GCS) via conf.d
-- Added Python cloud tools to package with auto pip install
-- Atomic archive writes (temp file + rename before truncation)
-- AES-256-GCM encryption hardening
+* Thu May 22 2026 Rushikesh Sakharle <rishiananya123@gmail.com> - 2.2.0-1
+- Daemon mode (--daemon / --daemon-once) with cron/interval scheduling
+- Real-time disk monitoring: emergency rotation at DISK_CRITICAL_PERCENT
+- Per-file disk guard: skips archive when free space < DISK_MIN_FREE_MB
+- Cloud backup integration via conf.d (CLOUD_PROVIDER, CLOUD_BACKUP_ON_PANIC)
+- Adaptive upload throttle (psutil-based CPU/RAM monitoring)
+- systemd service and timer units bundled in package
+- Python cloud tools (global-aws/gcp-backup/restore) bundled in package
+- pip3 install of Python deps in postinst/%post (PEP 668 compat)
+- Atomic archive writes: .tmp → rename before source truncation
+- setuid/execute bits stripped from archive file permissions
+- Goroutine panic recovery in parallel rotation
+- Password caching fix for no-hash credential paths
+- 57 Go tests (race-clean) + 41 Python tests (no cloud creds required)
+
+* Sat Feb 01 2026 Rushikesh Sakharle <rishiananya123@gmail.com> - 2.1.15-1
+- Removed overwrite option from --pass-gen for security
+- --pass-gen only for initial setup, --pass-reset for changes

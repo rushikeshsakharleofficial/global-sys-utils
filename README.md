@@ -84,13 +84,13 @@ Pre-built packages for every release are in the [`installers/`](installers/) dir
 **Debian / Ubuntu:**
 
 ```bash
-sudo dpkg -i installers/v2.1.15/global-logrotate_2.1.15-1_amd64.deb
+sudo dpkg -i installers/v2.2.0/global-logrotate_2.2.0-1_amd64.deb
 ```
 
 **RHEL / CentOS / Fedora (x86\_64):**
 
 ```bash
-sudo rpm -ivh installers/v2.1.15/global-logrotate-2.1.15-1.x86_64.rpm
+sudo rpm -ivh installers/v2.2.0/global-logrotate-2.2.0-1.x86_64.rpm
 ```
 
 **ARM64 packages** (`aarch64` / `arm64`) are in the same directory.

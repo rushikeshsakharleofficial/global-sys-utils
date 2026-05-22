@@ -1,5 +1,5 @@
 NAME := global-logrotate
-VERSION := 2.1.15
+VERSION := 2.2.0
 RELEASE := 1
 
 # Detect native architecture
