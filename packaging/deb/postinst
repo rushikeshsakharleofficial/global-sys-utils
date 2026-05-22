@@ -6,23 +6,40 @@ if command -v mandb >/dev/null 2>&1; then
     mandb -q 2>/dev/null || true
 fi
 
+# Install Python dependencies for cloud backup tools.
+# Try --break-system-packages first (required on Debian 12+/Ubuntu 22.04+ due to PEP 668),
+# fall back without it for older distros, warn if pip3 is missing.
+_pip_install() {
+    pip3 install --quiet \
+        "boto3>=1.34.0" \
+        "google-cloud-storage>=2.16.0" \
+        "google-auth>=2.28.0" \
+        "psutil>=5.9.0" \
+        "$@"
+}
+
+if command -v pip3 >/dev/null 2>&1; then
+    echo "Installing Python dependencies for global-logrotate cloud tools..."
+    _pip_install --break-system-packages 2>/dev/null || \
+    _pip_install 2>/dev/null || \
+    echo "Warning: pip install failed. Run manually: pip3 install -r /usr/share/global-sys-utils/requirements.txt"
+else
+    echo "Warning: pip3 not found. Install Python dependencies manually:"
+    echo "  pip3 install -r /usr/share/global-sys-utils/requirements.txt"
+fi
+
 # Reload systemd and enable the daemon service
 if command -v systemctl >/dev/null 2>&1 && systemctl is-system-running --quiet 2>/dev/null; then
     systemctl daemon-reload || true
-
-    # Enable the long-running daemon (does NOT start it — admin must configure SCHEDULE first)
     systemctl enable global-logrotate.service 2>/dev/null || true
-
-    # Enable the timer-based oneshot (disabled by default; admin opts in)
-    # To use: systemctl enable --now global-logrotate-once.timer
     echo ""
     echo "global-logrotate installed."
     echo ""
-    echo "  Option A — long-running daemon (recommended for disk monitoring):"
+    echo "  Option A — long-running daemon (recommended, includes disk monitoring):"
     echo "    1. Add SCHEDULE to /etc/global-sys-utils/global.conf or conf.d/"
     echo "    2. systemctl start global-logrotate"
     echo ""
-    echo "  Option B — systemd timer (one-shot, no disk monitoring):"
+    echo "  Option B — systemd timer (schedule managed by systemd):"
     echo "    systemctl enable --now global-logrotate-once.timer"
     echo ""
 fi

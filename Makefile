@@ -111,6 +111,9 @@ endif
 	@cp $(SYSTEMDDIR)/global-logrotate.service      $(RPMDIR)/$(RPM_ARCH)/SOURCES/
 	@cp $(SYSTEMDDIR)/global-logrotate-once.service $(RPMDIR)/$(RPM_ARCH)/SOURCES/
 	@cp $(SYSTEMDDIR)/global-logrotate-once.timer   $(RPMDIR)/$(RPM_ARCH)/SOURCES/
+	@# Python cloud tools + requirements
+	@for script in $(PY_SCRIPTS); do cp $$script $(RPMDIR)/$(RPM_ARCH)/SOURCES/$$(basename $$script); done
+	@cp requirements.txt $(RPMDIR)/$(RPM_ARCH)/SOURCES/
 	@cp packaging/rpm/$(NAME).spec $(RPMDIR)/$(RPM_ARCH)/SPECS/
 	@rpmbuild --define "_topdir $(PWD)/$(RPMDIR)/$(RPM_ARCH)" \
 		--define "_version $(VERSION)" \
@@ -152,6 +155,7 @@ endif
 	@mkdir -p $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/share/zsh/vendor-completions
 	@mkdir -p $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/etc/global-sys-utils/global.conf.d
 	@mkdir -p $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/lib/systemd/system
+	@mkdir -p $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/share/global-sys-utils
 	@cp $(BUILDDIR)/$(BINARY)-$(GOARCH) $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/bin/$(BINARY)
 	@cp man/$(NAME).1 $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/share/man/man1/
 	@gzip -f $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/share/man/man1/$(NAME).1 2>/dev/null || true
@@ -162,6 +166,12 @@ endif
 	@cp $(SYSTEMDDIR)/global-logrotate.service      $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/lib/systemd/system/
 	@cp $(SYSTEMDDIR)/global-logrotate-once.service $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/lib/systemd/system/
 	@cp $(SYSTEMDDIR)/global-logrotate-once.timer   $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/lib/systemd/system/
+	@# Python cloud tools + requirements
+	@for script in $(PY_SCRIPTS); do \
+		cp $$script $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/bin/$$(basename $$script); \
+		chmod 755 $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/bin/$$(basename $$script); \
+	done
+	@cp requirements.txt $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/usr/share/global-sys-utils/
 	@sed -e "s/{{VERSION}}/$(VERSION)/g" \
 		-e "s/{{ARCH}}/$(DEB_ARCH)/g" \
 		packaging/deb/control > $(DEBDIR)/$(NAME)_$(VERSION)-$(RELEASE)_$(DEB_ARCH)/DEBIAN/control
