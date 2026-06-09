@@ -1,22 +1,19 @@
 <div align="center">
 
-# global-sys-utils — Linux Log Rotation, Cloud Backup & Daemon Scheduler
+# global-sys-utils
 
 **Automated log rotation for Linux with AWS S3 and Google Cloud Storage backup, AES-256-GCM encryption, systemd daemon scheduling, and real-time disk-pressure protection.**
 
-[![Build](https://github.com/rushikeshsakharleofficial/global-sys-utils/actions/workflows/packages.yml/badge.svg)](https://github.com/rushikeshsakharleofficial/global-sys-utils/actions/workflows/packages.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](go.mod)
-[![Python](https://img.shields.io/badge/Python-3.8+-3776AB.svg)](requirements.txt)
-[![Version](https://img.shields.io/badge/version-2.2.0-green.svg)](Makefile)
+[![Build](https://img.shields.io/github/actions/workflow/status/rushikeshsakharleofficial/global-sys-utils/packages.yml?style=for-the-badge)](https://github.com/rushikeshsakharleofficial/global-sys-utils/actions)
+[![License](https://img.shields.io/github/license/rushikeshsakharleofficial/global-sys-utils?style=for-the-badge)](https://github.com/rushikeshsakharleofficial/global-sys-utils/blob/main/LICENSE)
+[![Version](https://img.shields.io/github/v/release/rushikeshsakharleofficial/global-sys-utils?style=for-the-badge)](https://github.com/rushikeshsakharleofficial/global-sys-utils/releases)
+[![Stars](https://img.shields.io/github/stars/rushikeshsakharleofficial/global-sys-utils?style=for-the-badge)](https://github.com/rushikeshsakharleofficial/global-sys-utils/stargazers)
 
 </div>
 
----
+## What is this?
 
-`global-sys-utils` is an open-source Linux log management suite that combines fast parallel log rotation (Go), encrypted archiving, cloud offload to AWS S3 and Google Cloud Storage (Python), and a self-scheduling daemon with live disk monitoring — all driven by a simple INI configuration file and packaged as `.deb` / `.rpm` for production Linux systems.
-
-**Keywords:** linux log rotation, logrotate alternative, AWS S3 log backup, Google Cloud Storage log archival, AES-256 log encryption, systemd log daemon, disk pressure monitoring, cron log rotation, RHEL Ubuntu log management, gzip log compression, parallel log rotation Go
+`global-sys-utils` is an open-source Linux log management suite that combines fast parallel log rotation (Go), encrypted archiving, cloud offload to AWS S3 and Google Cloud Storage (Python), and a self-scheduling daemon with live disk monitoring. All driven by a simple INI configuration file and packaged as `.deb` / `.rpm` for production Linux systems.
 
 ---
 
@@ -34,9 +31,10 @@
 10. [Build from Source](#build-from-source)
 11. [Testing](#testing)
 12. [Project Structure](#project-structure)
-13. [Contributing](#contributing)
-14. [Security](#security)
-15. [License](#license)
+13. [Documentation](#documentation)
+14. [Contributing](#contributing)
+15. [Security](#security)
+16. [License](#license)
 
 ---
 
@@ -483,6 +481,19 @@ global-sys-utils/
 
 ---
 
+## Documentation
+
+| Resource | Description |
+|----------|-------------|
+| [config/global.conf](config/global.conf) | Annotated main configuration file with all keys and defaults |
+| [config/global.conf.d/](config/global.conf.d/) | Per-app job config templates |
+| [man/global-logrotate.1](man/global-logrotate.1) | Man page (`man global-logrotate` after install) |
+| [packaging/systemd/](packaging/systemd/) | systemd service and timer unit files |
+| [installers/](installers/) | Pre-built `.deb` and `.rpm` packages by release |
+| [tests/test_utils.py](tests/test_utils.py) | Python utility test suite |
+
+---
+
 ## Contributing
 
 Contributions are **fully open** — bug fixes, refactors, new features, architecture changes, documentation improvements, additional cloud providers, new packaging formats, tests, anything. No change is too large or too small.
@@ -519,6 +530,10 @@ Contributions are **fully open** — bug fixes, refactors, new features, archite
 
 **Bug reports and feature requests:** open a [GitHub issue](https://github.com/rushikeshsakharleofficial/global-sys-utils/issues).
 
+<a href="https://github.com/rushikeshsakharleofficial/global-sys-utils/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=rushikeshsakharleofficial/global-sys-utils" />
+</a>
+
 ---
 
 ## Security
@@ -548,7 +563,7 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) for detai
 
 <div align="center">
 
-**global-sys-utils** — Linux log rotation · AWS S3 backup · Google Cloud Storage backup · AES-256 encryption · systemd daemon · disk monitoring
+[![Star History Chart](https://api.star-history.com/svg?repos=rushikeshsakharleofficial/global-sys-utils&type=Date)](https://star-history.com/#rushikeshsakharleofficial/global-sys-utils&Date)
 
 [Issues](https://github.com/rushikeshsakharleofficial/global-sys-utils/issues) · [Releases](https://github.com/rushikeshsakharleofficial/global-sys-utils/releases) · [License](LICENSE)
 
