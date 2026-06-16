@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>v2.2.0 — Adaptive Upload Throttle &amp; conf.d Job System | global-sys-utils</title>
+  <meta name="description" content="Release notes for global-sys-utils v2.2.0: adaptive upload throttle, conf.d job system, and DEB/RPM packages for amd64 and arm64." />
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+  <div class="page-hero section-sm">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="./index.html">Home</a><span>/</span>
+        <a href="./blog.html">Blog</a><span>/</span>
+        <span>v2.2.0 Release</span>
+      </div>
+      <div style="margin-bottom:12px">
+        <span class="badge badge-primary">Latest Release</span>
+        <span class="badge badge-surface" style="margin-left:4px">release</span>
+        <span class="badge badge-surface" style="margin-left:4px">cloud</span>
+        <span class="badge badge-surface" style="margin-left:4px">daemon</span>
+      </div>
+      <h1 class="text-headline">v2.2.0 — Adaptive Upload Throttle &amp; conf.d Job System</h1>
+      <p style="color:var(--muted);margin-top:12px;font-family:var(--font-mono);font-size:0.75rem">June 2026</p>
+    </div>
+  </div>
+
+  <section class="section-sm">
+    <div class="container">
+      <div class="prose">
+
+        <h2>What's new</h2>
+        <p>
+          v2.2.0 is the largest feature release since the initial daemon mode. It ships two major
+          capabilities: an adaptive bandwidth throttle for cloud uploads, and a modular conf.d job
+          system that lets each service team own its rotation policy independently.
+        </p>
+
+        <h2>Adaptive Upload Throttle</h2>
+        <p>
+          Previous versions uploaded archived log files to S3 or GCS using a fixed concurrency
+          limit. On busy servers this caused OOM events during peak backup windows — too many
+          uploads competing with the application workload for network bandwidth and CPU.
+        </p>
+        <p>
+          The new throttle samples live CPU usage and available RAM every 5 seconds. If either
+          metric is above a configurable threshold, the upload worker count is reduced. When
+          resources recover, concurrency scales back up automatically.
+        </p>
+
+        <div class="code-block"><span class="cmt"># Configure in global.conf</span>
+<span class="val">UPLOAD_MAX_WORKERS</span>=8
+<span class="val">UPLOAD_CPU_THRESHOLD</span>=80
+<span class="val">UPLOAD_RAM_THRESHOLD_MB</span>=512
+<span class="cmt"># Workers auto-reduce when CPU &gt; 80% or free RAM &lt; 512MB</span></div>
+
+        <p>
+          The throttle is enabled by default. Set <code>UPLOAD_MAX_WORKERS=1</code> to disable
+          adaptive scaling and pin concurrency.
+        </p>
+
+        <h2>conf.d Job System</h2>
+        <p>
+          In v2.1.x, a single global config file defined all rotation and cloud parameters.
+          For deployments with 10+ services this became a coordination bottleneck — every team
+          needed to edit the same file.
+        </p>
+        <p>
+          v2.2.0 introduces <code>/etc/global-sys-utils/global.conf.d/</code>. Each <code>.conf</code>
+          file in this directory is an independent rotation + cloud job. The daemon discovers
+          and runs all jobs concurrently on its schedule.
+        </p>
+
+        <div class="code-block"><span class="cmt"># /etc/global-sys-utils/global.conf.d/api-service.conf</span>
+<span class="val">LOG_DIR</span>=/var/log/api
+<span class="val">CLOUD_PROVIDER</span>=aws
+<span class="val">S3_BUCKET</span>=api-log-archives
+<span class="val">RETENTION_DAYS</span>=90
+
+<span class="cmt"># /etc/global-sys-utils/global.conf.d/worker-service.conf</span>
+<span class="val">LOG_DIR</span>=/var/log/worker
+<span class="val">CLOUD_PROVIDER</span>=gcp
+<span class="val">GCS_BUCKET</span>=worker-log-archives
+<span class="val">RETENTION_DAYS</span>=30</div>
+
+        <p>
+          Each job runs isolated — a failure in one conf file does not affect other jobs.
+          Add a new service by dropping a <code>.conf</code> file; remove it by deleting the file.
+          No daemon restart required (the daemon polls <code>conf.d</code> on each cycle).
+        </p>
+
+        <h2>Package updates</h2>
+        <p>
+          DEB and RPM packages are available for amd64 and arm64. Post-install scripts
+          automatically install Python dependencies and configure systemd units.
+        </p>
+
+        <div class="code-block"><span class="cmt"># Debian / Ubuntu amd64</span>
+<span class="cmd">wget</span> https://github.com/rushikeshsakharleofficial/global-sys-utils/releases/download/v2.2.0/global-logrotate_2.2.0-1_amd64.deb
+<span class="cmd">sudo dpkg -i</span> global-logrotate_2.2.0-1_amd64.deb
+
+<span class="cmt"># RHEL / Fedora x86_64</span>
+<span class="cmd">wget</span> https://github.com/rushikeshsakharleofficial/global-sys-utils/releases/download/v2.2.0/global-logrotate-2.2.0-1.x86_64.rpm
+<span class="cmd">sudo rpm -ivh</span> global-logrotate-2.2.0-1.x86_64.rpm</div>
+
+        <h2>Full changelog</h2>
+        <ul>
+          <li>feat: adaptive upload throttle based on live CPU/RAM metrics</li>
+          <li>feat: conf.d job system — each <code>.conf</code> is an independent daemon job</li>
+          <li>feat: daemon polls conf.d on each cycle, no restart needed for new jobs</li>
+          <li>fix: upload retry backoff now uses jitter to prevent thundering herd</li>
+          <li>fix: archive write guard skips file if free space would fall below <code>DISK_MIN_FREE_MB</code></li>
+          <li>build: amd64 + arm64 DEB and RPM packages</li>
+          <li>test: 57 Go unit tests pass with <code>-race</code> detector enabled</li>
+          <li>test: 41 Python tests pass for cloud module and credential loading</li>
+        </ul>
+
+        <h2>Upgrading from v2.1.x</h2>
+        <p>
+          Your existing <code>/etc/global-sys-utils/global.conf</code> continues to work.
+          The conf.d system is additive — migrate individual services to conf.d files at your
+          own pace. No breaking changes to CLI flags or environment variables.
+        </p>
+
+      </div>
+      <div style="margin-top:48px;padding-top:24px;border-top:1px solid var(--border-subtle);display:flex;gap:12px;flex-wrap:wrap">
+        <a class="btn btn-primary" href="./projects.html">Download v2.2.0</a>
+        <a class="btn btn-ghost" href="./blog.html">← All posts</a>
+      </div>
+    </div>
+  </section>
+</div>
+<script type="module" src="./src/js/main.js"></script>
+</body>
+</html>

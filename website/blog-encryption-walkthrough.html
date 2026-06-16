@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>AES-256-GCM Encryption Walkthrough | global-sys-utils</title>
+  <meta name="description" content="Step-by-step guide to encrypting log archives with AES-256-GCM in global-sys-utils before cloud upload." />
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+  <div class="page-hero section-sm">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="./index.html">Home</a><span>/</span>
+        <a href="./blog.html">Blog</a><span>/</span>
+        <span>Encryption Walkthrough</span>
+      </div>
+      <div style="margin-bottom:12px">
+        <span class="badge badge-surface">security</span>
+        <span class="badge badge-surface" style="margin-left:4px">tutorial</span>
+      </div>
+      <h1 class="text-headline">AES-256-GCM Encryption Walkthrough</h1>
+      <p style="color:var(--muted);margin-top:12px;font-family:var(--font-mono);font-size:0.75rem">March 2026</p>
+    </div>
+  </div>
+
+  <section class="section-sm">
+    <div class="container">
+      <div class="prose">
+
+        <h2>Why encrypt log archives?</h2>
+        <p>
+          Log files often contain PII — IP addresses, user IDs, email addresses, session tokens,
+          and request payloads. Uploading unencrypted archives to S3 or GCS means a bucket
+          misconfiguration or credential leak exposes real user data.
+        </p>
+        <p>
+          global-sys-utils encrypts each archive with AES-256-GCM before it ever leaves the local
+          filesystem. The cloud provider only ever receives ciphertext. Even with full bucket
+          access, an attacker cannot read the log content without the encryption key.
+        </p>
+
+        <h2>How it works</h2>
+        <ul>
+          <li>Each archive gets a random 96-bit nonce — no two archives share an IV even if the content is identical.</li>
+          <li>AES-256-GCM provides both confidentiality and integrity — a tampered archive fails to decrypt.</li>
+          <li>The password is stored only as a SHA-256 hash in <code>/etc/global-sys-utils/</code>. The plaintext is never written to disk after initial setup.</li>
+          <li>At runtime the password is loaded from <code>~/.global-sys-utils/credentials.ini</code> (mode 0600), or from the <code>LOGROTATE_PASSWORD</code> environment variable.</li>
+        </ul>
+
+        <h2>Step-by-step setup</h2>
+
+        <h3>1. Generate and store a password</h3>
+        <div class="code-block"><span class="cmt"># Run once — prompts for a password and stores its hash</span>
+<span class="cmd">sudo global-logrotate</span> --pass-gen
+<span class="cmt"># Enter password: ••••••••••••</span>
+<span class="cmt"># Confirm password: ••••••••••••</span>
+<span class="cmt"># ✓ Password hash stored in /etc/global-sys-utils/passwd.sha256</span>
+<span class="cmt"># ✓ Credentials written to /root/.global-sys-utils/credentials.ini (mode 0600)</span></div>
+
+        <h3>2. Enable encryption in config</h3>
+        <div class="code-block"><span class="cmt"># /etc/global-sys-utils/global.conf</span>
+<span class="val">ENCRYPT</span>=true
+<span class="val">LOG_DIR</span>=/var/log/app</div>
+
+        <h3>3. Rotate with encryption</h3>
+        <div class="code-block"><span class="cmd">global-logrotate</span> --encrypt
+<span class="cmt"># → /var/log/app/api.log.2026-03-15.gz.enc</span>
+<span class="cmt"># → /var/log/app/worker.log.2026-03-15.gz.enc</span></div>
+
+        <h3>4. CI / automated environments</h3>
+        <div class="code-block"><span class="cmt"># Pass password via environment variable (no credentials.ini needed)</span>
+<span class="val">LOGROTATE_PASSWORD</span>=your-secret <span class="cmd">global-logrotate</span> --encrypt
+
+<span class="cmt"># Or export it in your shell profile</span>
+<span class="cmd">export</span> <span class="val">LOGROTATE_PASSWORD</span>="$(cat /run/secrets/logrotate-pass)"</div>
+
+        <h3>5. Decrypt an archive manually</h3>
+        <div class="code-block"><span class="cmd">global-logrotate</span> --decrypt api.log.2026-03-15.gz.enc
+<span class="cmt"># Enter password: ••••••••••••</span>
+<span class="cmt"># → api.log.2026-03-15.gz</span>
+
+<span class="cmt"># Pipe directly to gunzip</span>
+<span class="cmd">global-logrotate</span> --decrypt api.log.2026-03-15.gz.enc | gunzip | less</div>
+
+        <h2>Security considerations</h2>
+        <ul>
+          <li>Use a unique password per environment (dev / staging / prod). A prod key compromise should not expose staging archives.</li>
+          <li>Rotate the encryption key annually or after any credential leak. Re-encrypt existing archives with the new key before discarding the old one.</li>
+          <li>Set <code>credentials.ini</code> to mode 0600 and owned by the service account running global-logrotate. The post-install script does this automatically.</li>
+          <li>Store the password in a secrets manager (AWS Secrets Manager, GCP Secret Manager, HashiCorp Vault) and inject it via <code>LOGROTATE_PASSWORD</code> at runtime rather than storing it on disk at all.</li>
+        </ul>
+
+      </div>
+      <div style="margin-top:48px;padding-top:24px;border-top:1px solid var(--border-subtle);display:flex;gap:12px;flex-wrap:wrap">
+        <a class="btn btn-primary" href="./features.html">All features</a>
+        <a class="btn btn-ghost" href="./blog.html">← All posts</a>
+      </div>
+    </div>
+  </section>
+</div>
+<script type="module" src="./src/js/main.js"></script>
+</body>
+</html>

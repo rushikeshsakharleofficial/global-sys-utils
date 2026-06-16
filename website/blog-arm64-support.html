@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>v2.1.15 — ARM64 Package Support | global-sys-utils</title>
+  <meta name="description" content="global-sys-utils v2.1.15 adds ARM64 package support for Apple Silicon and AWS Graviton, plus retry jitter for cloud uploads." />
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+  <div class="page-hero section-sm">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="./index.html">Home</a><span>/</span>
+        <a href="./blog.html">Blog</a><span>/</span>
+        <span>v2.1.15 Release</span>
+      </div>
+      <div style="margin-bottom:12px">
+        <span class="badge badge-surface">release</span>
+        <span class="badge badge-surface" style="margin-left:4px">arm64</span>
+      </div>
+      <h1 class="text-headline">v2.1.15 — ARM64 Package Support + Retry Jitter</h1>
+      <p style="color:var(--muted);margin-top:12px;font-family:var(--font-mono);font-size:0.75rem">May 2026</p>
+    </div>
+  </div>
+
+  <section class="section-sm">
+    <div class="container">
+      <div class="prose">
+
+        <h2>ARM64 / aarch64 packages</h2>
+        <p>
+          v2.1.15 ships the first official ARM64 packages for global-sys-utils.
+          This adds support for:
+        </p>
+        <ul>
+          <li>Apple Silicon Macs running Linux VMs (UTM, Parallels, Lima)</li>
+          <li>AWS Graviton2/Graviton3 EC2 instances</li>
+          <li>Ampere Altra and other cloud ARM instances</li>
+          <li>Raspberry Pi 4/5 running 64-bit Raspberry Pi OS or Ubuntu</li>
+        </ul>
+
+        <div class="code-block"><span class="cmt"># Debian / Ubuntu arm64</span>
+<span class="cmd">wget</span> https://github.com/rushikeshsakharleofficial/global-sys-utils/releases/download/v2.1.15/global-logrotate_2.1.15-1_arm64.deb
+<span class="cmd">sudo dpkg -i</span> global-logrotate_2.1.15-1_arm64.deb
+<span class="cmd">sudo systemctl enable</span> --now global-sys-utils.service
+
+<span class="cmt"># RHEL / Fedora aarch64</span>
+<span class="cmd">wget</span> https://github.com/rushikeshsakharleofficial/global-sys-utils/releases/download/v2.1.15/global-logrotate-2.1.15-1.aarch64.rpm
+<span class="cmd">sudo rpm -ivh</span> global-logrotate-2.1.15-1.aarch64.rpm</div>
+
+        <p>
+          The Go core binary is compiled with <code>GOARCH=arm64</code>.
+          Python cloud modules run on the system Python 3.9+ — no architecture-specific
+          Python packages are required.
+        </p>
+
+        <h2>Retry jitter for cloud uploads</h2>
+        <p>
+          In multi-node environments where several servers run global-sys-utils on the same
+          schedule, a transient S3 or GCS error caused all nodes to retry simultaneously —
+          amplifying load on the cloud endpoint and causing cascading failures.
+        </p>
+        <p>
+          v2.1.15 adds exponential backoff with random jitter to all cloud upload retries.
+          Each retry waits <code>base * 2^attempt + rand(0, jitter_ms)</code> milliseconds,
+          spreading retry storms across a configurable window.
+        </p>
+
+        <div class="code-block"><span class="cmt"># Configure retry behaviour in global.conf</span>
+<span class="val">UPLOAD_MAX_RETRIES</span>=5
+<span class="val">UPLOAD_RETRY_BASE_MS</span>=500
+<span class="val">UPLOAD_RETRY_JITTER_MS</span>=300
+<span class="cmt"># Retry delays: ~500ms, ~1.3s, ~2.9s, ~6.1s, ~12.6s</span></div>
+
+        <h2>Changelog</h2>
+        <ul>
+          <li>feat: arm64 DEB package (<code>global-logrotate_2.1.15-1_arm64.deb</code>)</li>
+          <li>feat: aarch64 RPM package (<code>global-logrotate-2.1.15-1.aarch64.rpm</code>)</li>
+          <li>feat: exponential backoff with random jitter on cloud upload retries</li>
+          <li>fix: S3 MD5 verification now handles multipart uploads correctly</li>
+          <li>fix: GCS upload skips re-upload if object already exists with matching checksum</li>
+        </ul>
+
+      </div>
+      <div style="margin-top:48px;padding-top:24px;border-top:1px solid var(--border-subtle);display:flex;gap:12px;flex-wrap:wrap">
+        <a class="btn btn-primary" href="./projects.html">All downloads</a>
+        <a class="btn btn-ghost" href="./blog.html">← All posts</a>
+      </div>
+    </div>
+  </section>
+</div>
+<script type="module" src="./src/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>Comparing logrotate vs global-sys-utils | global-sys-utils</title>
+  <meta name="description" content="Why standard logrotate falls short for modern distributed systems and how global-sys-utils fills the gaps." />
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+  <div class="page-hero section-sm">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="./index.html">Home</a><span>/</span>
+        <a href="./blog.html">Blog</a><span>/</span>
+        <span>logrotate vs global-sys-utils</span>
+      </div>
+      <div style="margin-bottom:12px">
+        <span class="badge badge-surface">comparison</span>
+      </div>
+      <h1 class="text-headline">Comparing logrotate vs global-sys-utils</h1>
+      <p style="color:var(--muted);margin-top:12px;font-family:var(--font-mono);font-size:0.75rem">February 2026</p>
+    </div>
+  </div>
+
+  <section class="section-sm">
+    <div class="container">
+      <div class="prose">
+
+        <h2>logrotate is good — for 2005</h2>
+        <p>
+          Standard <code>logrotate</code> has been the Linux log management default for over two
+          decades. For a single-node server with a handful of services writing to local disk,
+          it works reliably. The problem is that modern infrastructure is none of those things.
+        </p>
+        <p>
+          Today's services run on dozens of nodes, generate gigabytes of logs per hour, need
+          encrypted offsite storage for compliance, and can fill a disk in minutes if something
+          goes wrong. logrotate's design predates all of these requirements.
+        </p>
+
+        <h2>Where logrotate falls short</h2>
+
+        <h3>Sequential rotation</h3>
+        <p>
+          logrotate processes files one at a time. On a server with 50 log files totalling 20 GB,
+          a nightly rotation can take 10–15 minutes. During that window, disk pressure is
+          unrelieved and new log writes compete with rotation I/O.
+        </p>
+        <p>
+          global-sys-utils rotates files in parallel — configurable worker count, files sorted
+          by size descending so the largest files start first. The same 50-file rotation
+          typically completes in under 2 minutes on an 8-core server.
+        </p>
+
+        <h3>No cloud offload</h3>
+        <p>
+          logrotate has no concept of cloud storage. The typical workaround is a separate cron
+          job that runs <code>aws s3 cp</code> or <code>gsutil cp</code> after rotation. This
+          creates a time window between rotation and upload where archives exist only on local
+          disk — a disk failure loses them.
+        </p>
+        <p>
+          global-sys-utils uploads each archive to S3 or GCS immediately after rotation, within
+          the same atomic operation. Upload failure triggers retry with exponential backoff;
+          the local archive is retained until upload succeeds.
+        </p>
+
+        <h3>No encryption</h3>
+        <p>
+          logrotate produces plaintext compressed archives. Encrypting them requires a separate
+          tool in the pipeline, adding complexity and another point of failure.
+        </p>
+        <p>
+          global-sys-utils applies AES-256-GCM encryption before any cloud upload.
+          The encryption key never touches the cloud provider.
+        </p>
+
+        <h3>No disk-pressure awareness</h3>
+        <p>
+          logrotate runs on a fixed cron schedule. If a service starts logging at 10× the normal
+          rate between rotation windows, the disk fills up with no automatic response.
+        </p>
+        <p>
+          global-sys-utils monitors disk usage continuously and triggers emergency rotation when
+          the threshold is crossed — independent of the normal schedule.
+        </p>
+
+        <h2>Side-by-side</h2>
+
+      </div>
+
+      <div style="overflow-x:auto;margin:32px 0">
+        <table class="comparison-table">
+          <thead>
+            <tr><th>Capability</th><th>logrotate</th><th>global-sys-utils</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Parallel rotation</td><td><span class="check-no">✗</span></td><td><span class="check-yes">✓</span></td></tr>
+            <tr><td>AES-256-GCM encryption</td><td><span class="check-no">✗</span></td><td><span class="check-yes">✓</span></td></tr>
+            <tr><td>AWS S3 upload</td><td><span class="check-no">✗</span></td><td><span class="check-yes">✓</span></td></tr>
+            <tr><td>Google Cloud Storage upload</td><td><span class="check-no">✗</span></td><td><span class="check-yes">✓</span></td></tr>
+            <tr><td>Disk pressure emergency rotation</td><td><span class="check-no">✗</span></td><td><span class="check-yes">✓</span></td></tr>
+            <tr><td>Atomic archive writes</td><td><span class="check-no">✗</span></td><td><span class="check-yes">✓</span></td></tr>
+            <tr><td>Long-running daemon</td><td><span class="check-part">via crond</span></td><td><span class="check-yes">✓</span></td></tr>
+            <tr><td>systemd service + timer</td><td><span class="check-part">manual</span></td><td><span class="check-yes">✓ auto-installed</span></td></tr>
+            <tr><td>Per-service job isolation</td><td><span class="check-no">✗</span></td><td><span class="check-yes">✓ conf.d</span></td></tr>
+            <tr><td>DEB + RPM packages</td><td><span class="check-yes">✓</span></td><td><span class="check-yes">✓</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="prose">
+        <h2>When to keep logrotate</h2>
+        <p>
+          If your setup is a single server, no cloud backup requirement, no compliance mandate
+          for encrypted storage, and logs are small enough that sequential rotation completes
+          in seconds — logrotate is a perfectly good tool. It's battle-tested and has zero
+          dependencies.
+        </p>
+        <p>
+          global-sys-utils is the right choice when you need any of: parallel rotation,
+          encrypted cloud backup, real-time disk pressure response, or per-service job isolation.
+        </p>
+      </div>
+
+      <div style="margin-top:48px;padding-top:24px;border-top:1px solid var(--border-subtle);display:flex;gap:12px;flex-wrap:wrap">
+        <a class="btn btn-primary" href="./projects.html">Download</a>
+        <a class="btn btn-ghost" href="./features.html">Features →</a>
+        <a class="btn btn-surface" href="./blog.html">← All posts</a>
+      </div>
+    </div>
+  </section>
+</div>
+<script type="module" src="./src/js/main.js"></script>
+</body>
+</html>

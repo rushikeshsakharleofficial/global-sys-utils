@@ -238,7 +238,7 @@ function renderBlog(containerId, limit) {
   const base = getBase()
   const posts = limit ? SITE.blog.slice(0, limit) : SITE.blog
   el.innerHTML = posts.map(p => `
-    <a class="blog-card" href="${base}blog-post.html#${p.slug}" style="display:block;text-decoration:none;color:inherit">
+    <a class="blog-card" href="${base}${p.slug}.html" style="display:block;text-decoration:none;color:inherit">
       <div class="blog-date">${p.date}</div>
       ${p.badge ? `<span class="badge badge-primary" style="margin-bottom:8px">${p.badge}</span>` : ''}
       <h3 class="blog-title">${p.title}</h3>

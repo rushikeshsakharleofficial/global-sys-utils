@@ -181,7 +181,7 @@ export const SITE = {
   /* ── Blog posts ─────────────────────────────────────────── */
   blog: [
     {
-      slug:  'v2-2-0-release',
+      slug:  'blog-v2-2-0-release',
       date:  'June 2026',
       badge: 'Latest Release',
       title: 'v2.2.0 — Adaptive Upload Throttle & conf.d Job System',
@@ -189,35 +189,35 @@ export const SITE = {
       tags:  ['release', 'cloud', 'daemon'],
     },
     {
-      slug:  'arm64-support',
+      slug:  'blog-arm64-support',
       date:  'May 2026',
       title: 'v2.1.15 — ARM64 Package Support',
       body:  'Official support for Apple Silicon and ARM-based Graviton instances. Retry jitter for more reliable cloud uploads.',
       tags:  ['release', 'arm64'],
     },
     {
-      slug:  'disk-pressure-guard',
+      slug:  'blog-disk-pressure-guard',
       date:  'Apr 2026',
       title: 'Disk Pressure Guard Deep Dive',
       body:  'Understanding how our new OOM-style disk manager prevents filesystem lockups on space-constrained servers.',
       tags:  ['tutorial', 'disk'],
     },
     {
-      slug:  'encryption-walkthrough',
+      slug:  'blog-encryption-walkthrough',
       date:  'Mar 2026',
       title: 'AES-256-GCM Encryption Walkthrough',
       body:  'Securing log payloads before they ever leave the local system. Step-by-step setup guide.',
       tags:  ['security', 'tutorial'],
     },
     {
-      slug:  'vs-logrotate',
+      slug:  'blog-vs-logrotate',
       date:  'Feb 2026',
       title: 'Comparing logrotate vs global-sys-utils',
       body:  'Why the standard logrotate daemon falls short for high-throughput distributed systems.',
       tags:  ['comparison'],
     },
     {
-      slug:  'gcs-backup-gke',
+      slug:  'blog-gcs-backup-gke',
       date:  'Jan 2026',
       title: 'Setting Up GCS Backup on GKE',
       body:  'A step-by-step guide to persistent log storage in Google Cloud Kubernetes.',

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>Disk Pressure Guard Deep Dive | global-sys-utils</title>
+  <meta name="description" content="How the global-sys-utils disk pressure guard prevents filesystem lockups on space-constrained Linux servers." />
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+  <div class="page-hero section-sm">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="./index.html">Home</a><span>/</span>
+        <a href="./blog.html">Blog</a><span>/</span>
+        <span>Disk Pressure Guard</span>
+      </div>
+      <div style="margin-bottom:12px">
+        <span class="badge badge-surface">tutorial</span>
+        <span class="badge badge-surface" style="margin-left:4px">disk</span>
+      </div>
+      <h1 class="text-headline">Disk Pressure Guard Deep Dive</h1>
+      <p style="color:var(--muted);margin-top:12px;font-family:var(--font-mono);font-size:0.75rem">April 2026</p>
+    </div>
+  </div>
+
+  <section class="section-sm">
+    <div class="container">
+      <div class="prose">
+
+        <h2>The problem: log files filling disks</h2>
+        <p>
+          High-throughput services can generate log files faster than scheduled rotation removes
+          them. A single noisy endpoint or a runaway debug flag can fill a disk in hours.
+          When <code>/var/log</code> fills up, applications start throwing write errors, systemd
+          journals stop recording, and SSH may become unavailable if the root filesystem is full.
+        </p>
+        <p>
+          Standard <code>logrotate</code> runs on a fixed cron schedule — it has no mechanism
+          to respond to real-time disk pressure. By the time the nightly rotation runs, the disk
+          is already full.
+        </p>
+
+        <h2>Two-level protection</h2>
+        <p>global-sys-utils ships two independent disk guards that work together:</p>
+
+        <h3>Level 1 — Emergency rotation trigger</h3>
+        <p>
+          The daemon continuously polls disk usage at <code>DISK_CHECK_INTERVAL</code> seconds
+          (default: 60). When used space on the log partition exceeds
+          <code>DISK_CRITICAL_PERCENT</code>, an emergency rotation runs immediately —
+          regardless of the normal schedule.
+        </p>
+
+        <div class="code-block"><span class="cmt"># /etc/global-sys-utils/global.conf</span>
+<span class="val">DISK_CRITICAL_PERCENT</span>=90
+<span class="val">DISK_CHECK_INTERVAL</span>=60
+
+<span class="cmt"># Example daemon log output when guard fires:</span>
+<span class="cmd">INFO</span>  disk usage 91.3% on /var/log — threshold 90%
+<span class="cmd">INFO</span>  triggering emergency rotation (8 files)
+<span class="cmd">INFO</span>  freed 4.2 GB in 3.1s — disk usage now 74.1%</div>
+
+        <h3>Level 2 — Archive write guard</h3>
+        <p>
+          Even when disk usage is below the emergency threshold, creating a compressed archive
+          of a large log file temporarily needs extra space. The archive write guard checks
+          that at least <code>DISK_MIN_FREE_MB</code> megabytes will remain free after the archive
+          is written. If not, it skips archiving that file and logs a warning.
+        </p>
+
+        <div class="code-block"><span class="val">DISK_MIN_FREE_MB</span>=200
+
+<span class="cmt"># Guard in action:</span>
+<span class="cmd">WARN</span>  skipping archive of access.log (2.1 GB): only 180 MB free
+<span class="cmd">INFO</span>  truncating access.log in-place instead</div>
+
+        <p>
+          In-place truncation preserves the file descriptor so running processes continue
+          writing without errors. The file is rotated on the next cycle once space is available.
+        </p>
+
+        <h2>Setup</h2>
+
+        <div class="code-block"><span class="cmt"># Minimal config — add to global.conf</span>
+<span class="val">DISK_CRITICAL_PERCENT</span>=85
+<span class="val">DISK_MIN_FREE_MB</span>=500
+<span class="val">DISK_CHECK_INTERVAL</span>=30
+
+<span class="cmt"># Start the daemon</span>
+<span class="cmd">sudo systemctl enable</span> --now global-sys-utils.service
+
+<span class="cmt"># Verify guard is active</span>
+<span class="cmd">sudo journalctl</span> -u global-sys-utils.service -f</div>
+
+        <h2>Tuning recommendations</h2>
+        <ul>
+          <li>Set <code>DISK_CRITICAL_PERCENT</code> to 10–15% below your actual alert threshold so rotation fires before your monitoring wakes up.</li>
+          <li>Set <code>DISK_MIN_FREE_MB</code> to at least 2× the size of your largest single log file.</li>
+          <li>On NVMe SSDs with fast compression, <code>DISK_CHECK_INTERVAL=15</code> adds negligible overhead.</li>
+          <li>On slow rotational disks, keep the interval at 60 seconds or higher to avoid polling overhead during heavy I/O.</li>
+        </ul>
+
+      </div>
+      <div style="margin-top:48px;padding-top:24px;border-top:1px solid var(--border-subtle);display:flex;gap:12px;flex-wrap:wrap">
+        <a class="btn btn-primary" href="./features.html">All features</a>
+        <a class="btn btn-ghost" href="./blog.html">← All posts</a>
+      </div>
+    </div>
+  </section>
+</div>
+<script type="module" src="./src/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>Setting Up GCS Backup on GKE | global-sys-utils</title>
+  <meta name="description" content="Step-by-step guide to setting up global-sys-utils GCS log backup on Google Kubernetes Engine using Workload Identity." />
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+  <div class="page-hero section-sm">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="./index.html">Home</a><span>/</span>
+        <a href="./blog.html">Blog</a><span>/</span>
+        <span>GCS Backup on GKE</span>
+      </div>
+      <div style="margin-bottom:12px">
+        <span class="badge badge-surface">cloud</span>
+        <span class="badge badge-surface" style="margin-left:4px">gcp</span>
+      </div>
+      <h1 class="text-headline">Setting Up GCS Backup on GKE</h1>
+      <p style="color:var(--muted);margin-top:12px;font-family:var(--font-mono);font-size:0.75rem">January 2026</p>
+    </div>
+  </div>
+
+  <section class="section-sm">
+    <div class="container">
+      <div class="prose">
+
+        <h2>Overview</h2>
+        <p>
+          Running global-sys-utils as a DaemonSet on GKE lets you rotate and archive logs from
+          every node to Google Cloud Storage without maintaining per-node credentials.
+          This guide uses GKE Workload Identity — the recommended approach that eliminates
+          service account key files entirely.
+        </p>
+
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>GKE cluster with Workload Identity enabled (<code>--workload-pool=PROJECT_ID.svc.id.goog</code>)</li>
+          <li>GCS bucket for log archives</li>
+          <li>global-sys-utils v2.1.15+ (arm64 support for Autopilot nodes)</li>
+        </ul>
+
+        <h2>1. Create the GCS bucket</h2>
+        <div class="code-block"><span class="cmd">gcloud storage buckets create</span> gs://my-gke-logs \
+  --location=US \
+  --uniform-bucket-level-access \
+  --lifecycle-file=lifecycle.json</div>
+
+        <div class="code-block"><span class="cmt"># lifecycle.json — auto-delete after 90 days</span>
+{
+  "lifecycle": {
+    "rule": [{
+      "action": { "type": "Delete" },
+      "condition": { "age": 90 }
+    }]
+  }
+}</div>
+
+        <h2>2. Create a Google Service Account</h2>
+        <div class="code-block"><span class="cmd">gcloud iam service-accounts create</span> gsu-log-uploader \
+  --display-name="global-sys-utils log uploader"
+
+<span class="cmd">gcloud storage buckets add-iam-policy-binding</span> gs://my-gke-logs \
+  --member="serviceAccount:gsu-log-uploader@PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/storage.objectCreator"</div>
+
+        <h2>3. Bind to Kubernetes Service Account</h2>
+        <div class="code-block"><span class="cmd">kubectl create serviceaccount</span> gsu-sa --namespace kube-system
+
+<span class="cmd">gcloud iam service-accounts add-iam-policy-binding</span> \
+  gsu-log-uploader@PROJECT_ID.iam.gserviceaccount.com \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:PROJECT_ID.svc.id.goog[kube-system/gsu-sa]"
+
+<span class="cmd">kubectl annotate serviceaccount</span> gsu-sa \
+  --namespace kube-system \
+  iam.gke.io/gcp-service-account=gsu-log-uploader@PROJECT_ID.iam.gserviceaccount.com</div>
+
+        <h2>4. Create the ConfigMap</h2>
+        <div class="code-block">kubectl apply -f - &lt;&lt;EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gsu-config
+  namespace: kube-system
+data:
+  global.conf: |
+    LOG_DIR=/var/log/pods
+    CLOUD_PROVIDER=gcp
+    GCS_BUCKET=my-gke-logs
+    RETENTION_DAYS=7
+    ENCRYPT=true
+    DISK_CRITICAL_PERCENT=85
+    DISK_MIN_FREE_MB=500
+EOF</div>
+
+        <h2>5. Deploy as a DaemonSet</h2>
+        <div class="code-block">kubectl apply -f - &lt;&lt;EOF
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: global-sys-utils
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: global-sys-utils
+  template:
+    metadata:
+      labels:
+        app: global-sys-utils
+    spec:
+      serviceAccountName: gsu-sa
+      containers:
+      - name: gsu
+        image: debian:bookworm-slim
+        command: ["/usr/bin/global-logrotate", "--daemon", "--schedule", "6h"]
+        volumeMounts:
+        - name: config
+          mountPath: /etc/global-sys-utils
+        - name: varlog
+          mountPath: /var/log
+        securityContext:
+          runAsUser: 0
+      volumes:
+      - name: config
+        configMap:
+          name: gsu-config
+          items:
+          - key: global.conf
+            path: global.conf
+      - name: varlog
+        hostPath:
+          path: /var/log
+EOF</div>
+
+        <h2>Verify uploads</h2>
+        <div class="code-block"><span class="cmt"># Check pod logs</span>
+<span class="cmd">kubectl logs</span> -n kube-system -l app=global-sys-utils --tail=50
+
+<span class="cmt"># List uploaded archives</span>
+<span class="cmd">gcloud storage ls</span> gs://my-gke-logs/ --recursive | head -20</div>
+
+        <h2>Notes</h2>
+        <ul>
+          <li>Workload Identity tokens are automatically refreshed — no credential rotation needed.</li>
+          <li>The <code>LOGROTATE_PASSWORD</code> env var can be injected from a Kubernetes Secret for encrypted archives.</li>
+          <li>On Autopilot clusters, use node taints to ensure the DaemonSet schedules correctly on spot nodes.</li>
+        </ul>
+
+      </div>
+      <div style="margin-top:48px;padding-top:24px;border-top:1px solid var(--border-subtle);display:flex;gap:12px;flex-wrap:wrap">
+        <a class="btn btn-primary" href="./features.html">All features</a>
+        <a class="btn btn-ghost" href="./blog.html">← All posts</a>
+      </div>
+    </div>
+  </section>
+</div>
+<script type="module" src="./src/js/main.js"></script>
+</body>
+</html>
