@@ -263,8 +263,8 @@ function renderProjects(containerId) {
       <p class="release-body">${r.body}</p>
       <div class="blog-tags" style="margin-bottom:16px">${(r.tags || []).map(t => `<span class="badge badge-surface">${t}</span>`).join('')}</div>
       <div class="release-downloads">
-        <a class="btn btn-primary btn-sm" href="${base}${r.deb}" download>⬇ DEB (amd64)</a>
-        <a class="btn btn-ghost btn-sm" href="${base}${r.rpm}" download>⬇ RPM (x86_64)</a>
+        <a class="btn btn-primary btn-sm" href="${base}${r.deb}" download>⬇ DEB (${r.debArch || 'amd64'})</a>
+        <a class="btn btn-ghost btn-sm" href="${base}${r.rpm}" download>⬇ RPM (${r.rpmArch || 'x86_64'})</a>
         <a class="btn btn-surface btn-sm" href="${SITE.repo}/releases" target="_blank" rel="noopener">GitHub Release</a>
       </div>
     </div>
