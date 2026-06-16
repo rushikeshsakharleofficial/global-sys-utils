@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>Blog — global-sys-utils</title>
+  <meta name="description" content="Updates, release notes, tutorials, and deep dives for global-sys-utils — Linux log rotation and cloud backup." />
+  <link rel="canonical" href="https://rushikeshsakharleofficial.github.io/global-sys-utils/blog.html" />
+  <meta property="og:title" content="Blog — global-sys-utils" />
+  <meta property="og:url" content="https://rushikeshsakharleofficial.github.io/global-sys-utils/blog.html" />
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+
+  <div class="page-hero section-sm">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="./index.html">Home</a>
+        <span>/</span>
+        <span>Blog</span>
+      </div>
+      <h1 class="text-headline">Updates &amp; Blog</h1>
+      <p class="text-body" style="color:var(--muted);max-width:600px;margin-top:16px">
+        Release notes, tutorials, and technical deep dives.
+      </p>
+    </div>
+  </div>
+
+  <section class="section-sm">
+    <div class="container">
+      <!-- Tag filters -->
+      <div class="tag-filters" id="tag-filters">
+        <button class="tag-filter active" data-tag="all">All</button>
+        <button class="tag-filter" data-tag="release">Releases</button>
+        <button class="tag-filter" data-tag="tutorial">Tutorials</button>
+        <button class="tag-filter" data-tag="cloud">Cloud</button>
+        <button class="tag-filter" data-tag="security">Security</button>
+        <button class="tag-filter" data-tag="comparison">Comparisons</button>
+      </div>
+
+      <!-- Blog grid (all posts) -->
+      <div class="grid-3" id="blog-all-grid"></div>
+    </div>
+  </section>
+
+  <!-- Newsletter -->
+  <section class="section-sm">
+    <div class="container" style="max-width:700px">
+      <div class="newsletter">
+        <h2 class="text-headline">Stay updated</h2>
+        <p>Get notified about new releases and tutorials. No spam, unsubscribe anytime.</p>
+        <form class="newsletter-form" onsubmit="return false">
+          <input type="email" placeholder="your@email.com" autocomplete="email" />
+          <button class="btn btn-primary" type="submit">Subscribe</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+</div>
+<script type="module" src="./src/js/main.js"></script>
+<script>
+  // Tag filtering — inline, no module needed
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.tag-filter').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tag-filter').forEach(b => b.classList.remove('active'))
+        btn.classList.add('active')
+        const tag = btn.dataset.tag
+        document.querySelectorAll('#blog-all-grid .blog-card').forEach(card => {
+          if (tag === 'all') {
+            card.style.display = ''
+          } else {
+            const tags = Array.from(card.querySelectorAll('.badge')).map(b => b.textContent.trim())
+            card.style.display = tags.includes(tag) ? '' : 'none'
+          }
+        })
+      })
+    })
+  })
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>404 — Page Not Found | global-sys-utils</title>
+  <meta name="robots" content="noindex" />
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+  <div class="error-page">
+    <div>
+      <div class="terminal" style="max-width:480px;margin:0 auto 48px">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <span class="dot-red"></span>
+            <span class="dot-amber"></span>
+            <span class="dot-green"></span>
+          </div>
+          <span class="terminal-title">bash — 404</span>
+        </div>
+        <div class="terminal-body">
+          <div class="terminal-line">
+            <span class="terminal-prompt">$</span>
+            <span class="terminal-cmd">curl</span>
+            <span class="terminal-path" id="error-path">/global-sys-utils/not-found</span>
+          </div>
+          <div class="terminal-line" style="margin-top:8px">
+            <span class="text-error">✗ 404 Not Found</span>
+          </div>
+          <div class="terminal-line">
+            <span class="terminal-out">The page you requested doesn't exist.</span>
+          </div>
+          <div class="terminal-line" style="margin-top:8px">
+            <span class="terminal-prompt">$</span>
+            <span class="terminal-cursor"></span>
+          </div>
+        </div>
+      </div>
+      <h1 style="font-size:1.5rem;font-weight:600;margin-bottom:12px">Page not found</h1>
+      <p style="color:var(--muted);margin-bottom:32px">
+        The page you're looking for doesn't exist or has moved.
+      </p>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
+        <a class="btn btn-primary" href="/global-sys-utils/">Go home</a>
+        <a class="btn btn-ghost" href="/global-sys-utils/features.html">Features</a>
+        <a class="btn btn-surface" href="/global-sys-utils/projects.html">Downloads</a>
+      </div>
+    </div>
+  </div>
+</div>
+<script type="module" src="./src/js/main.js"></script>
+<script>
+  const el = document.getElementById('error-path')
+  if (el) el.textContent = location.pathname
+</script>
+</body>
+</html>

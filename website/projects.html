@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>Releases — global-sys-utils</title>
+  <meta name="description" content="Download pre-built DEB and RPM packages for global-sys-utils. Supports amd64 and arm64 (aarch64)." />
+  <link rel="canonical" href="https://rushikeshsakharleofficial.github.io/global-sys-utils/projects.html" />
+  <meta property="og:title" content="Releases — global-sys-utils" />
+  <meta property="og:url" content="https://rushikeshsakharleofficial.github.io/global-sys-utils/projects.html" />
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+
+  <div class="page-hero section-sm">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="./index.html">Home</a>
+        <span>/</span>
+        <span>Releases</span>
+      </div>
+      <h1 class="text-headline">Releases &amp; Downloads</h1>
+      <p class="text-body" style="color:var(--muted);max-width:600px;margin-top:16px">
+        Pre-built packages for Debian/Ubuntu (.deb) and Red Hat/Fedora (.rpm),
+        for both amd64 and arm64 architectures.
+      </p>
+    </div>
+  </div>
+
+  <!-- Install instructions -->
+  <section class="section-sm">
+    <div class="container">
+      <h2 class="text-subhead" style="margin-bottom:24px">Quick install</h2>
+      <div data-tabs>
+        <div class="tabs-nav">
+          <button class="tab-btn active" data-tab="deb-amd">Debian amd64</button>
+          <button class="tab-btn" data-tab="deb-arm">Debian arm64</button>
+          <button class="tab-btn" data-tab="rpm-amd">RPM x86_64</button>
+          <button class="tab-btn" data-tab="rpm-arm">RPM aarch64</button>
+          <button class="tab-btn" data-tab="src">Source</button>
+        </div>
+        <div class="tab-panel active" data-panel="deb-amd">
+          <div class="code-block">
+<span class="cmd">wget</span> https://github.com/rushikeshsakharleofficial/global-sys-utils/releases/download/v2.2.0/global-logrotate_2.2.0-1_amd64.deb
+<span class="cmd">sudo dpkg -i</span> global-logrotate_2.2.0-1_amd64.deb
+<span class="cmd">sudo systemctl enable</span> --now global-sys-utils.service
+          </div>
+        </div>
+        <div class="tab-panel" data-panel="deb-arm">
+          <div class="code-block">
+<span class="cmd">wget</span> https://github.com/rushikeshsakharleofficial/global-sys-utils/releases/download/v2.2.0/global-logrotate_2.2.0-1_arm64.deb
+<span class="cmd">sudo dpkg -i</span> global-logrotate_2.2.0-1_arm64.deb
+<span class="cmd">sudo systemctl enable</span> --now global-sys-utils.service
+          </div>
+        </div>
+        <div class="tab-panel" data-panel="rpm-amd">
+          <div class="code-block">
+<span class="cmd">wget</span> https://github.com/rushikeshsakharleofficial/global-sys-utils/releases/download/v2.2.0/global-logrotate-2.2.0-1.x86_64.rpm
+<span class="cmd">sudo rpm -ivh</span> global-logrotate-2.2.0-1.x86_64.rpm
+<span class="cmd">sudo systemctl enable</span> --now global-sys-utils.service
+          </div>
+        </div>
+        <div class="tab-panel" data-panel="rpm-arm">
+          <div class="code-block">
+<span class="cmd">wget</span> https://github.com/rushikeshsakharleofficial/global-sys-utils/releases/download/v2.2.0/global-logrotate-2.2.0-1.aarch64.rpm
+<span class="cmd">sudo rpm -ivh</span> global-logrotate-2.2.0-1.aarch64.rpm
+<span class="cmd">sudo systemctl enable</span> --now global-sys-utils.service
+          </div>
+        </div>
+        <div class="tab-panel" data-panel="src">
+          <div class="code-block">
+<span class="cmt"># Requires Go 1.21+ and Python 3.9+</span>
+<span class="cmd">git clone</span> https://github.com/rushikeshsakharleofficial/global-sys-utils
+<span class="cmd">cd</span> global-sys-utils
+<span class="cmd">make build</span>
+<span class="cmd">sudo make install</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Releases list -->
+  <section class="section-sm">
+    <div class="container">
+      <h2 class="text-subhead" style="margin-bottom:24px">All releases</h2>
+      <div id="projects-grid"></div>
+    </div>
+  </section>
+
+  <!-- System requirements -->
+  <section class="section-sm section-alt" style="padding:48px 0">
+    <div class="container">
+      <h2 class="text-subhead" style="margin-bottom:24px">System requirements</h2>
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-icon">🐧</div>
+          <div class="card-title">Linux kernel</div>
+          <div class="card-body">3.10+ (glibc 2.17+). Tested on Ubuntu 20.04+, Debian 11+, RHEL 8+, Fedora 36+.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon">🐍</div>
+          <div class="card-title">Python 3.9+</div>
+          <div class="card-body">Required for cloud upload modules (boto3, google-cloud-storage). Installed automatically by .deb/.rpm post-install scripts.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon">🔧</div>
+          <div class="card-title">systemd 245+</div>
+          <div class="card-body">For daemon and timer units. If your distro uses SysVinit, you can run global-logrotate as a standalone cron job.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+<script type="module" src="./src/js/main.js"></script>
+</body>
+</html>

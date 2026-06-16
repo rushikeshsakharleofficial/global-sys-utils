@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>global-sys-utils — Log Rotation. Cloud Backup. Zero Compromise.</title>
+  <meta name="description" content="Open-source Linux log management with parallel rotation, AES-256-GCM encryption, AWS S3 & GCS cloud backup, and systemd daemon scheduling." />
+  <meta name="keywords" content="logrotate, linux log rotation, aws s3 backup, gcs backup, aes encryption, systemd, log management" />
+  <link rel="canonical" href="https://rushikeshsakharleofficial.github.io/global-sys-utils/" />
+  <!-- OG -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="global-sys-utils — Log Rotation. Cloud Backup. Zero Compromise." />
+  <meta property="og:description" content="Open-source Linux log management with parallel rotation, AES-256-GCM encryption, AWS S3 & GCS cloud backup." />
+  <meta property="og:url" content="https://rushikeshsakharleofficial.github.io/global-sys-utils/" />
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="global-sys-utils" />
+  <meta name="twitter:description" content="Log Rotation. Cloud Backup. Zero Compromise." />
+  <!-- FOUC guard -->
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+
+  <!-- Hero -->
+  <section class="hero section">
+    <div class="hero-bg"></div>
+    <div class="container">
+      <div class="hero-grid">
+        <div class="hero-left">
+          <div class="hero-eyebrow">
+            <span>●</span> v2.2.0 — Now with adaptive upload throttle
+          </div>
+          <h1 class="hero-title">
+            Log Rotation.<br>
+            <span class="accent">Cloud Backup.</span><br>
+            Zero Compromise.
+          </h1>
+          <p class="hero-desc">
+            Open-source Linux log management with parallel rotation, AES-256-GCM encryption,
+            AWS S3 &amp; GCS backup, disk-pressure guard, and systemd daemon scheduling.
+          </p>
+          <div class="hero-ctas">
+            <a class="btn btn-primary btn-lg" href="./projects.html">Download v2.2.0</a>
+            <a class="btn btn-ghost btn-lg" href="https://github.com/rushikeshsakharleofficial/global-sys-utils" target="_blank" rel="noopener">View on GitHub</a>
+          </div>
+          <div class="hero-stats">
+            <span class="hero-stat"><span class="check">✓</span> 57 Go tests</span>
+            <span class="hero-stat"><span class="check">✓</span> 41 Python tests</span>
+            <span class="hero-stat"><span class="check">✓</span> DEB + RPM packages</span>
+            <span class="hero-stat"><span class="check">✓</span> amd64 + arm64</span>
+          </div>
+        </div>
+        <div class="hero-right">
+          <div class="terminal">
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="dot-red"></span>
+                <span class="dot-amber"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="terminal-title">bash — global-sys-utils</span>
+            </div>
+            <div class="terminal-body">
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cmd">global-logrotate</span>
+                <span class="terminal-flag">--parallel 8</span>
+                <span class="terminal-flag">--encrypt</span>
+              </div>
+              <div class="terminal-line">
+                <span class="terminal-out">↻ Rotating /var/log/app/api.log (12.4 MB)</span>
+              </div>
+              <div class="terminal-line">
+                <span class="terminal-out">↻ Rotating /var/log/app/worker.log (8.1 MB)</span>
+              </div>
+              <div class="terminal-line">
+                <span class="terminal-out">↻ Rotating /var/log/nginx/access.log (3.2 MB)</span>
+              </div>
+              <div class="terminal-line">
+                <span class="terminal-out">⬆ Uploading to s3://my-logs/2026-06 …</span>
+              </div>
+              <div class="terminal-line">
+                <span class="terminal-ok">✓ 3 files rotated, 3 uploaded (4.2s)</span>
+              </div>
+              <div class="terminal-line" style="margin-top:12px">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cmd">global-logrotate</span>
+                <span class="terminal-flag">--daemon</span>
+                <span class="terminal-flag">--schedule @daily</span>
+              </div>
+              <div class="terminal-line">
+                <span class="terminal-ok">✓ Daemon started (systemd unit: global-sys-utils.service)</span>
+              </div>
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cursor"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features grid -->
+  <section class="section section-alt">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="text-headline">Everything logrotate should have been</h2>
+        <p>Nine capabilities built into a single statically-linked binary. No daemons, no agents, no config servers.</p>
+      </div>
+      <div class="grid-3" id="features-grid"></div>
+    </div>
+  </section>
+
+  <!-- Comparison -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="text-headline">How it compares to logrotate</h2>
+        <p>Side-by-side capability matrix for standard Linux log rotation setups.</p>
+      </div>
+      <div id="comparison-grid"></div>
+    </div>
+  </section>
+
+  <!-- Install quick-start -->
+  <section class="section section-alt">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="text-headline">Up and running in 60 seconds</h2>
+      </div>
+      <div data-tabs>
+        <div class="tabs-nav">
+          <button class="tab-btn active" data-tab="deb">Debian / Ubuntu</button>
+          <button class="tab-btn" data-tab="rpm">RHEL / Fedora</button>
+          <button class="tab-btn" data-tab="src">From Source</button>
+        </div>
+        <div class="tab-panel active" data-panel="deb">
+          <div class="code-block">
+<span class="cmt"># Download and install the latest .deb package</span>
+<span class="cmd">wget</span> https://github.com/rushikeshsakharleofficial/global-sys-utils/releases/download/v2.2.0/global-logrotate_2.2.0-1_amd64.deb
+<span class="cmd">sudo dpkg -i</span> global-logrotate_2.2.0-1_amd64.deb
+
+<span class="cmt"># Enable and start the systemd service</span>
+<span class="cmd">sudo systemctl enable</span> --now global-sys-utils.service
+          </div>
+        </div>
+        <div class="tab-panel" data-panel="rpm">
+          <div class="code-block">
+<span class="cmt"># Download and install the latest .rpm package</span>
+<span class="cmd">wget</span> https://github.com/rushikeshsakharleofficial/global-sys-utils/releases/download/v2.2.0/global-logrotate-2.2.0-1.x86_64.rpm
+<span class="cmd">sudo rpm -ivh</span> global-logrotate-2.2.0-1.x86_64.rpm
+
+<span class="cmt"># Enable and start the systemd service</span>
+<span class="cmd">sudo systemctl enable</span> --now global-sys-utils.service
+          </div>
+        </div>
+        <div class="tab-panel" data-panel="src">
+          <div class="code-block">
+<span class="cmt"># Requires Go 1.21+ and Python 3.9+</span>
+<span class="cmd">git clone</span> https://github.com/rushikeshsakharleofficial/global-sys-utils
+<span class="cmd">cd</span> global-sys-utils
+<span class="cmd">make build</span>
+<span class="cmd">sudo make install</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Testimonials -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="text-headline">Used in production</h2>
+      </div>
+      <div id="testimonials-grid"></div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section section-alt">
+    <div class="container" style="max-width:860px">
+      <div class="section-header">
+        <h2 class="text-headline">Frequently asked questions</h2>
+      </div>
+      <div id="faq-grid"></div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section">
+    <div class="container" style="max-width:860px">
+      <div class="cta-banner">
+        <h2 class="text-headline">Ready to replace logrotate?</h2>
+        <p>Download the pre-built package for your distro and be running in under a minute.</p>
+        <div class="btn-group">
+          <a class="btn btn-primary btn-lg" href="./projects.html">Download v2.2.0</a>
+          <a class="btn btn-ghost btn-lg" href="./features.html">See all features →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Recent blog posts -->
+  <section class="section section-alt">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="text-headline">Latest updates</h2>
+      </div>
+      <div class="grid-3" id="blog-grid"></div>
+      <div style="margin-top:32px">
+        <a class="btn btn-ghost" href="./blog.html">All posts →</a>
+      </div>
+    </div>
+  </section>
+
+</div>
+<script type="module" src="./src/js/main.js"></script>
+</body>
+</html>

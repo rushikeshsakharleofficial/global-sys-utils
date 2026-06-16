@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>Features — global-sys-utils</title>
+  <meta name="description" content="Full feature breakdown of global-sys-utils: parallel rotation, AES-256-GCM encryption, AWS S3 & GCS backup, disk-pressure guard, conf.d job system, and more." />
+  <link rel="canonical" href="https://rushikeshsakharleofficial.github.io/global-sys-utils/features.html" />
+  <meta property="og:title" content="Features — global-sys-utils" />
+  <meta property="og:url" content="https://rushikeshsakharleofficial.github.io/global-sys-utils/features.html" />
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+
+  <div class="page-hero section-sm">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="./index.html">Home</a>
+        <span>/</span>
+        <span>Features</span>
+      </div>
+      <h1 class="text-headline">Feature deep dive</h1>
+      <p class="text-body" style="color:var(--muted);max-width:600px;margin-top:16px">
+        Every capability global-sys-utils ships — how each one works and why it matters for production.
+      </p>
+    </div>
+  </div>
+
+  <!-- Parallel Rotation -->
+  <section class="section-sm">
+    <div class="container">
+      <div class="feature-section">
+        <div class="feature-section-content">
+          <span class="badge badge-secondary" style="margin-bottom:16px">Core</span>
+          <h3>Parallel Rotation</h3>
+          <p>Rotate N log files concurrently, sorted by file size descending so the largest files start first. Worker count is configurable via <code style="font-family:var(--font-mono);color:var(--primary)">--parallel N</code>.</p>
+          <div class="feature-bullets">
+            <div class="feature-bullet">OS-level concurrency — each file on its own goroutine</div>
+            <div class="feature-bullet">Sorted by size for optimal throughput utilisation</div>
+            <div class="feature-bullet">Default worker count matches logical CPU count</div>
+          </div>
+        </div>
+        <div class="terminal">
+          <div class="terminal-header">
+            <div class="terminal-dots"><span class="dot-red"></span><span class="dot-amber"></span><span class="dot-green"></span></div>
+            <span class="terminal-title">parallel rotation</span>
+          </div>
+          <div class="terminal-body">
+            <div class="terminal-line"><span class="terminal-prompt">$</span><span class="terminal-cmd">global-logrotate</span><span class="terminal-flag">--parallel 8</span><span class="terminal-path">/var/log/app/</span></div>
+            <div class="terminal-line"><span class="terminal-out">[worker-1] rotating api.log (12.4 MB)</span></div>
+            <div class="terminal-line"><span class="terminal-out">[worker-2] rotating worker.log (8.1 MB)</span></div>
+            <div class="terminal-line"><span class="terminal-out">[worker-3] rotating cron.log (2.3 MB)</span></div>
+            <div class="terminal-line"><span class="terminal-ok">✓ 3 files in 1.8s (8 workers)</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature-section reverse">
+        <div class="feature-section-content">
+          <span class="badge badge-secondary" style="margin-bottom:16px">Security</span>
+          <h3>AES-256-GCM Encryption</h3>
+          <p>Archives encrypted with AES-256 in GCM mode before any cloud upload. Passwords stored as SHA-256 hashes; never plaintext.</p>
+          <div class="feature-bullets">
+            <div class="feature-bullet">One-time setup: <code style="font-family:var(--font-mono);color:var(--primary)">--pass-gen</code></div>
+            <div class="feature-bullet">Auto-loads from <code style="font-family:var(--font-mono);color:var(--primary)">~/.global-sys-utils/credentials.ini</code></div>
+            <div class="feature-bullet">Override via <code style="font-family:var(--font-mono);color:var(--primary)">LOGROTATE_PASSWORD</code> env var</div>
+          </div>
+        </div>
+        <div class="code-block" style="font-size:0.8rem">
+<span class="cmt"># Generate and store password (one time)</span>
+<span class="cmd">global-logrotate</span> --pass-gen
+
+<span class="cmt"># All subsequent rotations auto-decrypt</span>
+<span class="cmd">global-logrotate</span> --encrypt /var/log/app.log
+<span class="cmt"># → app.log.2026-06-16.gz.enc</span>
+
+<span class="cmt"># Or pass via environment</span>
+<span class="val">LOGROTATE_PASSWORD=secret</span> global-logrotate --encrypt
+        </div>
+      </div>
+
+      <div class="feature-section">
+        <div class="feature-section-content">
+          <span class="badge badge-secondary" style="margin-bottom:16px">Cloud</span>
+          <h3>AWS S3 + GCS Backup</h3>
+          <p>Upload aged archives directly to S3 or Google Cloud Storage. Each conf.d job independently specifies its cloud provider.</p>
+          <div class="feature-bullets">
+            <div class="feature-bullet">S3: named-profile support, MD5 verification, retry with jitter</div>
+            <div class="feature-bullet">GCS: ADC credential resolution, project-level auth</div>
+            <div class="feature-bullet">Dry-run preview before any actual upload</div>
+            <div class="feature-bullet">Adaptive upload throttle based on live CPU/RAM</div>
+          </div>
+        </div>
+        <div class="code-block" style="font-size:0.8rem">
+<span class="cmt"># /etc/global-sys-utils/global.conf.d/app.conf</span>
+<span class="val">LOG_DIR</span>=/var/log/app
+<span class="val">CLOUD_PROVIDER</span>=aws
+<span class="val">S3_BUCKET</span>=my-log-archives
+<span class="val">AWS_PROFILE</span>=prod-backup
+<span class="val">RETENTION_DAYS</span>=90
+
+<span class="cmt"># Manual upload with dry-run</span>
+<span class="cmd">global-logrotate</span> --upload --dry-run
+        </div>
+      </div>
+
+      <div class="feature-section reverse">
+        <div class="feature-section-content">
+          <span class="badge badge-secondary" style="margin-bottom:16px">Reliability</span>
+          <h3>Disk Pressure Guard</h3>
+          <p>Two-level disk protection: emergency rotation when disk usage crosses a threshold; archive write guard that aborts if free space would run out.</p>
+          <div class="feature-bullets">
+            <div class="feature-bullet"><code style="font-family:var(--font-mono);color:var(--primary)">DISK_CRITICAL_PERCENT</code> — triggers emergency rotation</div>
+            <div class="feature-bullet"><code style="font-family:var(--font-mono);color:var(--primary)">DISK_MIN_FREE_MB</code> — minimum free space before archiving</div>
+            <div class="feature-bullet">Daemon polls on configurable interval</div>
+          </div>
+        </div>
+        <div class="code-block" style="font-size:0.8rem">
+<span class="val">DISK_CRITICAL_PERCENT</span>=90
+<span class="val">DISK_MIN_FREE_MB</span>=200
+<span class="val">DISK_CHECK_INTERVAL</span>=60
+
+<span class="cmt"># When disk &gt; 90% used:</span>
+<span class="cmd">INFO</span> disk pressure detected (91%), triggering emergency rotation
+<span class="cmd">INFO</span> freed 4.2 GB in 3.1s
+        </div>
+      </div>
+
+      <div class="feature-section">
+        <div class="feature-section-content">
+          <span class="badge badge-secondary" style="margin-bottom:16px">Scheduling</span>
+          <h3>Daemon + systemd</h3>
+          <p>Full-featured daemon with cron expressions, interval aliases, and systemd service integration installed automatically by the package.</p>
+          <div class="feature-bullets">
+            <div class="feature-bullet">Aliases: <code style="font-family:var(--font-mono);color:var(--primary)">@daily</code>, <code style="font-family:var(--font-mono);color:var(--primary)">@hourly</code>, <code style="font-family:var(--font-mono);color:var(--primary)">6h</code></div>
+            <div class="feature-bullet">Standard cron expressions: <code style="font-family:var(--font-mono);color:var(--primary)">0 2 * * *</code></div>
+            <div class="feature-bullet">Oneshot systemd timer for single-run scheduled jobs</div>
+          </div>
+        </div>
+        <div class="code-block" style="font-size:0.8rem">
+<span class="cmt"># Start daemon on interval</span>
+<span class="cmd">global-logrotate</span> --daemon --schedule 6h
+
+<span class="cmt"># Or standard cron expression</span>
+<span class="cmd">global-logrotate</span> --daemon --schedule "0 2 * * *"
+
+<span class="cmt"># Or use systemd (installed by package)</span>
+<span class="cmd">sudo systemctl enable</span> --now global-sys-utils.service
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Feature cards grid -->
+  <section class="section section-alt">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="text-headline">All capabilities at a glance</h2>
+      </div>
+      <div class="grid-3" id="features-grid"></div>
+    </div>
+  </section>
+
+  <!-- Comparison -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="text-headline">vs logrotate</h2>
+      </div>
+      <div id="comparison-grid"></div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section">
+    <div class="container" style="max-width:860px">
+      <div class="cta-banner">
+        <h2 class="text-headline">Ready to deploy?</h2>
+        <p>Download the pre-built package for your architecture and start rotating in minutes.</p>
+        <div class="btn-group">
+          <a class="btn btn-primary btn-lg" href="./projects.html">Download v2.2.0</a>
+          <a class="btn btn-ghost btn-lg" href="./contact.html">Ask a question →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+<script type="module" src="./src/js/main.js"></script>
+</body>
+</html>

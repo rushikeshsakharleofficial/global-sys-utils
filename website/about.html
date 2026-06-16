@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>About — global-sys-utils</title>
+  <meta name="description" content="About global-sys-utils — the open-source Linux log rotation and cloud backup tool built for production workloads." />
+  <link rel="canonical" href="https://rushikeshsakharleofficial.github.io/global-sys-utils/about.html" />
+  <meta property="og:title" content="About — global-sys-utils" />
+  <meta property="og:url" content="https://rushikeshsakharleofficial.github.io/global-sys-utils/about.html" />
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+
+  <div class="page-hero section-sm">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="./index.html">Home</a>
+        <span>/</span>
+        <span>About</span>
+      </div>
+      <h1 class="text-headline">About global-sys-utils</h1>
+      <p class="text-body" style="color:var(--muted);max-width:600px;margin-top:16px">
+        An open-source Linux log management tool built to handle the things logrotate can't —
+        encryption, cloud backup, disk-pressure protection, and production-grade scheduling.
+      </p>
+    </div>
+  </div>
+
+  <section class="section-sm">
+    <div class="container">
+      <div class="about-stats">
+        <div>
+          <div class="about-stat-number">v2.2.0</div>
+          <div class="about-stat-label">Current release</div>
+        </div>
+        <div>
+          <div class="about-stat-number">57+</div>
+          <div class="about-stat-label">Go unit tests</div>
+        </div>
+        <div>
+          <div class="about-stat-number">41+</div>
+          <div class="about-stat-label">Python tests</div>
+        </div>
+        <div>
+          <div class="about-stat-number">4</div>
+          <div class="about-stat-label">Package targets</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-sm">
+    <div class="container">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:start">
+        <div>
+          <h2 class="text-headline" style="margin-bottom:24px">Why it exists</h2>
+          <p style="color:var(--muted);line-height:1.8;margin-bottom:16px">
+            Standard <code style="font-family:var(--font-mono);color:var(--primary)">logrotate</code>
+            was designed in a different era — local disks, no cloud, single-node setups.
+            Modern infrastructure runs distributed services, generates gigabytes of logs per hour,
+            and requires encrypted off-site storage to meet compliance requirements.
+          </p>
+          <p style="color:var(--muted);line-height:1.8;margin-bottom:16px">
+            global-sys-utils fills that gap. It's a single binary that handles the full lifecycle:
+            parallel compression → AES-256-GCM encryption → S3/GCS upload → disk-space guard → systemd scheduling.
+          </p>
+          <p style="color:var(--muted);line-height:1.8">
+            The conf.d job system means each service team manages their own log policy independently,
+            without coordinating through a central config file.
+          </p>
+        </div>
+        <div>
+          <h2 class="text-headline" style="margin-bottom:24px">Technical foundation</h2>
+          <div class="feature-bullets" style="gap:16px">
+            <div class="feature-bullet">Core rotation engine written in Go — race-detector-clean, statically linked.</div>
+            <div class="feature-bullet">Cloud provider modules in Python — AWS boto3 and GCP google-cloud-storage.</div>
+            <div class="feature-bullet">systemd service + timer units installed automatically by the .deb/.rpm post-install scripts.</div>
+            <div class="feature-bullet">AES-256-GCM encryption with credential auto-load from file or environment variable.</div>
+            <div class="feature-bullet">Atomic write pattern (write-to-tmp, rename) prevents partial archives on crash.</div>
+            <div class="feature-bullet">DEB packages for amd64 and arm64; RPM packages for x86_64 and aarch64.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-sm" style="background:var(--surface);padding:48px 0">
+    <div class="container">
+      <h2 class="text-headline" style="margin-bottom:32px">Who builds this</h2>
+      <div class="card" style="max-width:540px">
+        <div style="font-weight:600;font-size:1.1rem;margin-bottom:4px">Rushikesh Sakharle</div>
+        <div style="font-family:var(--font-mono);font-size:0.75rem;color:var(--muted);margin-bottom:16px">Author &amp; maintainer</div>
+        <p style="color:var(--muted);font-size:0.9rem;line-height:1.7">
+          Infrastructure engineer focused on Linux systems tooling, cloud-native log management,
+          and production reliability. global-sys-utils started as an internal tool and was open-sourced
+          after proving stable across several production deployments.
+        </p>
+        <div style="margin-top:16px;display:flex;gap:12px">
+          <a class="btn btn-ghost btn-sm" href="https://github.com/rushikeshsakharleofficial/global-sys-utils" target="_blank" rel="noopener">GitHub →</a>
+          <a class="btn btn-surface btn-sm" href="./contact.html">Contact →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-sm">
+    <div class="container">
+      <div class="cta-banner">
+        <h2 class="text-headline">Ready to try it?</h2>
+        <p>Download a pre-built package or read the full feature documentation.</p>
+        <div class="btn-group">
+          <a class="btn btn-primary" href="./projects.html">Download</a>
+          <a class="btn btn-ghost" href="./features.html">Features →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+<script type="module" src="./src/js/main.js"></script>
+</body>
+</html>
