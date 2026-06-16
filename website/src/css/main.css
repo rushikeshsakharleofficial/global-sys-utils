@@ -456,6 +456,34 @@ ul { list-style: none; }
   .nav-mobile-toggle { display: flex; }
 }
 
+/* ── Skip link (accessibility) ───────────────────────────────── */
+.skip-link {
+  position: fixed;
+  top: -100%;
+  left: var(--space-4);
+  z-index: 200;
+  padding: var(--space-3) var(--space-6);
+  background: var(--primary);
+  color: #000;
+  font-weight: 700;
+  font-size: 0.875rem;
+  border-radius: 0 0 var(--r-md) var(--r-md);
+  text-decoration: none;
+  transition: top 0.15s;
+}
+.skip-link:focus { top: 0; }
+
+/* ── Mobile nav backdrop ─────────────────────────────────────── */
+.nav-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 98;
+  cursor: pointer;
+}
+.nav-backdrop.open { display: block; }
+
 /* ── Main content offset for fixed nav ──────────────────────── */
 .page-content { padding-top: var(--nav-h); }
 
@@ -983,37 +1011,54 @@ ul { list-style: none; }
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  overflow: hidden;
 }
 
 .comparison-table th,
 .comparison-table td {
-  padding: 12px 16px;
+  padding: 13px 20px;
   text-align: left;
   border-bottom: 1px solid var(--border-subtle);
 }
 
+.comparison-table th:not(:last-child),
+.comparison-table td:not(:last-child) {
+  border-right: 1px solid var(--border-subtle);
+}
+
 .comparison-table thead th {
-  background: rgba(167,139,250,0.05);
+  background: rgba(167,139,250,0.07);
   color: var(--text);
   font-weight: 600;
   font-size: 0.8125rem;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .comparison-table thead th:nth-child(3) {
   color: var(--primary);
   text-shadow: 0 0 16px rgba(167,139,250,0.4);
+  background: rgba(167,139,250,0.1);
 }
+
+.comparison-table tbody tr:last-child td { border-bottom: none; }
 
 .comparison-table tbody tr:hover td {
-  background: rgba(255,255,255,0.03);
+  background: rgba(255,255,255,0.025);
 }
 
+.comparison-table td:nth-child(1) { color: var(--text); }
 .comparison-table td:nth-child(2),
-.comparison-table td:nth-child(3) { text-align: center; }
+.comparison-table td:nth-child(3) { text-align: center; width: 160px; }
+
+.comparison-table td:nth-child(3) {
+  background: rgba(167,139,250,0.03);
+}
 
 .check-yes  { color: var(--secondary); font-size: 1.1rem; }
-.check-no   { color: rgba(255,255,255,0.15); font-size: 1.1rem; }
+.check-no   { color: #f87171; opacity: 0.55; font-size: 1rem; }
 .check-part { color: var(--tertiary); font-size: 0.8rem; font-family: var(--font-mono); }
 
 /* ── FAQ Accordion ───────────────────────────────────────────── */

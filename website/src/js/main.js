@@ -62,26 +62,46 @@ function injectNav() {
   const mobileMenu = document.createElement('div')
   mobileMenu.id = 'mobile-menu'
   mobileMenu.className = 'nav-mobile-menu'
+  mobileMenu.setAttribute('role', 'dialog')
+  mobileMenu.setAttribute('aria-label', 'Navigation menu')
   mobileMenu.innerHTML = SITE.nav.map(n =>
     `<a href="${base}${n.href}">${n.label}</a>`
   ).join('') + `<a href="${SITE.repo}" target="_blank" rel="noopener">GitHub ↗</a>`
 
+  const backdrop = document.createElement('div')
+  backdrop.id = 'nav-backdrop'
+  backdrop.className = 'nav-backdrop'
+  backdrop.setAttribute('aria-hidden', 'true')
+
+  const skipLink = document.createElement('a')
+  skipLink.className = 'skip-link'
+  skipLink.href = '#main-content'
+  skipLink.textContent = 'Skip to main content'
+
+  const pageContent = document.querySelector('.page-content')
+  if (pageContent && !pageContent.id) pageContent.id = 'main-content'
+
+  document.body.prepend(backdrop)
   document.body.prepend(mobileMenu)
   document.body.prepend(nav)
+  document.body.prepend(skipLink)
 
   const toggleBtn = document.getElementById('mobile-toggle')
   function closeMobileMenu() {
-    const menu = document.getElementById('mobile-menu')
-    menu.classList.remove('open')
+    mobileMenu.classList.remove('open')
+    backdrop.classList.remove('open')
     toggleBtn.setAttribute('aria-expanded', 'false')
     toggleBtn.textContent = '☰'
+    toggleBtn.setAttribute('aria-label', 'Open menu')
   }
   toggleBtn.addEventListener('click', function() {
-    const menu = document.getElementById('mobile-menu')
-    const open = menu.classList.toggle('open')
+    const open = mobileMenu.classList.toggle('open')
+    backdrop.classList.toggle('open', open)
     this.setAttribute('aria-expanded', String(open))
     this.textContent = open ? '✕' : '☰'
+    this.setAttribute('aria-label', open ? 'Close menu' : 'Open menu')
   })
+  backdrop.addEventListener('click', closeMobileMenu)
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closeMobileMenu()
   })

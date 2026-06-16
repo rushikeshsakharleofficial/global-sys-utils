@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="bg1" cx="25%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#1a0a2e"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+    <radialGradient id="glow1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg1)"/>
+  <ellipse cx="200" cy="300" rx="500" ry="400" fill="url(#glow1)"/>
+  <ellipse cx="1050" cy="200" rx="350" ry="300" fill="url(#glow2)"/>
+
+  <!-- Terminal card -->
+  <rect x="620" y="100" width="520" height="280" rx="12" fill="#0d0d0d" stroke="#a78bfa" stroke-width="1" stroke-opacity="0.3"/>
+  <!-- Terminal header -->
+  <rect x="620" y="100" width="520" height="40" rx="12" fill="#111111"/>
+  <rect x="620" y="128" width="520" height="12" fill="#111111"/>
+  <circle cx="648" cy="120" r="6" fill="#f87171"/>
+  <circle cx="670" cy="120" r="6" fill="#fbbf24"/>
+  <circle cx="692" cy="120" r="6" fill="#4ade80"/>
+  <text x="750" y="124" font-family="monospace" font-size="12" fill="#52525b">bash — global-sys-utils</text>
+
+  <!-- Terminal content -->
+  <text x="644" y="170" font-family="monospace" font-size="13" fill="#a78bfa">$</text>
+  <text x="660" y="170" font-family="monospace" font-size="13" fill="#e4e4e7">global-logrotate</text>
+  <text x="802" y="170" font-family="monospace" font-size="13" fill="#22d3ee">--parallel 8 --encrypt</text>
+
+  <text x="644" y="198" font-family="monospace" font-size="13" fill="#71717a">↻ Rotating /var/log/app/api.log (12.4 MB)</text>
+  <text x="644" y="220" font-family="monospace" font-size="13" fill="#71717a">↻ Rotating /var/log/app/worker.log (8.1 MB)</text>
+  <text x="644" y="242" font-family="monospace" font-size="13" fill="#71717a">⬆ Uploading to s3://my-logs/2026-06 …</text>
+  <text x="644" y="264" font-family="monospace" font-size="13" fill="#4ade80">✓ 3 files rotated, 3 uploaded (4.2s)</text>
+
+  <text x="644" y="300" font-family="monospace" font-size="13" fill="#a78bfa">$</text>
+  <rect x="660" y="288" width="10" height="16" rx="1" fill="#4ade80" opacity="0.8"/>
+
+  <!-- Headline -->
+  <text x="80" y="170" font-family="system-ui, -apple-system, sans-serif" font-size="52" font-weight="800" fill="#ffffff">Log Rotation.</text>
+  <text x="80" y="236" font-family="system-ui, -apple-system, sans-serif" font-size="52" font-weight="800" fill="#a78bfa">Cloud Backup.</text>
+  <text x="80" y="302" font-family="system-ui, -apple-system, sans-serif" font-size="52" font-weight="800" fill="#ffffff">Zero Compromise.</text>
+
+  <!-- Description -->
+  <text x="80" y="358" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#a1a1aa">Open-source Linux log management with</text>
+  <text x="80" y="382" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#a1a1aa">AES-256-GCM encryption &amp; cloud backup.</text>
+
+  <!-- Badges -->
+  <rect x="80" y="422" width="130" height="32" rx="16" fill="#a78bfa" fill-opacity="0.15" stroke="#a78bfa" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="145" y="442" font-family="monospace" font-size="13" fill="#a78bfa" text-anchor="middle">57 Go tests</text>
+
+  <rect x="224" y="422" width="148" height="32" rx="16" fill="#4ade80" fill-opacity="0.1" stroke="#4ade80" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="298" y="442" font-family="monospace" font-size="13" fill="#4ade80" text-anchor="middle">41 Python tests</text>
+
+  <rect x="386" y="422" width="140" height="32" rx="16" fill="#22d3ee" fill-opacity="0.1" stroke="#22d3ee" stroke-width="1" stroke-opacity="0.4"/>
+  <text x="456" y="442" font-family="monospace" font-size="13" fill="#22d3ee" text-anchor="middle">DEB + RPM</text>
+
+  <!-- Version badge -->
+  <rect x="80" y="530" width="88" height="28" rx="14" fill="#a78bfa" fill-opacity="0.2" stroke="#a78bfa" stroke-width="1" stroke-opacity="0.5"/>
+  <text x="124" y="548" font-family="monospace" font-size="12" fill="#a78bfa" text-anchor="middle">v2.2.0</text>
+
+  <!-- Brand -->
+  <text x="184" y="548" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#52525b">global-sys-utils</text>
+
+  <!-- Border glow -->
+  <rect x="0" y="0" width="1200" height="630" rx="0" fill="none" stroke="#a78bfa" stroke-width="1" stroke-opacity="0.12"/>
+</svg>
