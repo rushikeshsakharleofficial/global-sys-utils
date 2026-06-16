@@ -1244,11 +1244,100 @@ ul { list-style: none; }
 .page-hero .breadcrumb span { color: var(--muted); }
 
 /* ── Installation tabs ───────────────────────────────────────── */
+@keyframes tabPanelIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes copyFlash {
+  0%   { box-shadow: 0 0 0 0 rgba(74,222,128,0); }
+  40%  { box-shadow: 0 0 0 6px rgba(74,222,128,0.25); }
+  100% { box-shadow: 0 0 0 0 rgba(74,222,128,0); }
+}
+
+@keyframes lineReveal {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Install steps header */
+.install-steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: var(--space-8);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.install-steps::-webkit-scrollbar { display: none; }
+
+.install-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.install-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(167,139,250,0.3);
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 12px rgba(167,139,250,0.15);
+}
+
+.install-step-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.install-step-connector {
+  flex: 1;
+  min-width: 40px;
+  height: 1px;
+  margin: 0 var(--space-3);
+  background: linear-gradient(90deg, rgba(167,139,250,0.3), rgba(34,211,238,0.15));
+  position: relative;
+  overflow: hidden;
+}
+
+.install-step-connector::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(167,139,250,0.7), transparent);
+  animation: connectorSlide 3s linear infinite;
+}
+
+@keyframes connectorSlide {
+  from { left: -100%; }
+  to   { left: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .install-step-connector::after { display: none; }
+}
+
 .tabs-nav {
   display: flex;
   border-bottom: 1px solid var(--border);
   margin-bottom: var(--space-6);
   gap: 2px;
+  position: relative;
 }
 
 .tab-btn {
@@ -1260,15 +1349,92 @@ ul { list-style: none; }
   font-weight: 500;
   color: var(--muted);
   cursor: pointer;
-  transition: color var(--transition), border-color var(--transition);
+  transition: color var(--transition), border-color var(--transition), text-shadow var(--transition);
   margin-bottom: -1px;
+  position: relative;
 }
 
-.tab-btn.active, .tab-btn:hover { color: var(--primary); }
-.tab-btn.active { border-bottom-color: var(--primary); }
+.tab-btn:hover { color: var(--text); }
+
+.tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  text-shadow: 0 0 16px rgba(167,139,250,0.5);
+}
+
+/* Glow dot on active tab */
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 8px 2px rgba(167,139,250,0.6);
+}
 
 .tab-panel { display: none; }
-.tab-panel.active { display: block; }
+
+.tab-panel.active {
+  display: block;
+  animation: tabPanelIn 0.32s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Code block wrapper (for copy button positioning) */
+.code-block-wrapper {
+  position: relative;
+}
+
+/* Copy button */
+.copy-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  letter-spacing: 0.02em;
+  z-index: 2;
+}
+
+.copy-btn:hover {
+  color: var(--text);
+  border-color: rgba(167,139,250,0.4);
+  background: rgba(167,139,250,0.08);
+}
+
+.copy-btn.copied {
+  color: var(--secondary);
+  border-color: rgba(74,222,128,0.4);
+  background: rgba(74,222,128,0.06);
+  animation: copyFlash 0.5s ease forwards;
+}
+
+/* Staggered code line reveal on tab switch */
+@media (prefers-reduced-motion: no-preference) {
+  .tab-panel.active .code-block .code-line {
+    opacity: 0;
+    animation: lineReveal 0.28s ease forwards;
+  }
+  .tab-panel.active .code-block .code-line:nth-child(1) { animation-delay: 0.05s; }
+  .tab-panel.active .code-block .code-line:nth-child(2) { animation-delay: 0.12s; }
+  .tab-panel.active .code-block .code-line:nth-child(3) { animation-delay: 0.19s; }
+  .tab-panel.active .code-block .code-line:nth-child(4) { animation-delay: 0.26s; }
+  .tab-panel.active .code-block .code-line:nth-child(5) { animation-delay: 0.33s; }
+}
 
 /* ── Contact Form ────────────────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--space-4); }

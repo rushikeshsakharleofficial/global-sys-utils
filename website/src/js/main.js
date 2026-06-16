@@ -160,9 +160,123 @@ function initTabs() {
       container.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'))
       btn.classList.add('active')
       const panel = container.querySelector(`[data-panel="${target}"]`)
-      if (panel) panel.classList.add('active')
+      if (panel) {
+        // Restart CSS animation on each switch
+        panel.classList.remove('active')
+        void panel.offsetWidth // force reflow
+        panel.classList.add('active')
+      }
     })
   })
+}
+
+/* ── Wrap code-block lines for stagger animation ─────────────── */
+function wrapCodeLines() {
+  document.querySelectorAll('.tab-panel .code-block').forEach(block => {
+    const nodes = Array.from(block.childNodes)
+    const lines = []
+    let current = []
+
+    nodes.forEach(node => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const parts = node.textContent.split('\n')
+        parts.forEach((part, i) => {
+          if (part.trim() !== '' || current.length > 0) {
+            current.push(document.createTextNode(part))
+          }
+          if (i < parts.length - 1) {
+            if (current.length > 0) lines.push([...current])
+            current = []
+          }
+        })
+      } else {
+        current.push(node.cloneNode(true))
+      }
+    })
+    if (current.length > 0) lines.push(current)
+
+    block.innerHTML = ''
+    lines.forEach(lineNodes => {
+      const span = document.createElement('span')
+      span.className = 'code-line'
+      span.style.display = 'block'
+      lineNodes.forEach(n => span.appendChild(n))
+      block.appendChild(span)
+      block.appendChild(document.createTextNode('\n'))
+    })
+  })
+}
+
+/* ── Copy buttons for code blocks ────────────────────────────── */
+function initCopyButtons() {
+  document.querySelectorAll('.tab-panel .code-block').forEach(block => {
+    const wrapper = document.createElement('div')
+    wrapper.className = 'code-block-wrapper'
+    block.parentNode.insertBefore(wrapper, block)
+    wrapper.appendChild(block)
+
+    const btn = document.createElement('button')
+    btn.className = 'copy-btn'
+    btn.setAttribute('aria-label', 'Copy to clipboard')
+    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z"/></svg> Copy`
+    wrapper.appendChild(btn)
+
+    btn.addEventListener('click', () => {
+      const text = block.innerText.trim()
+      navigator.clipboard.writeText(text).then(() => {
+        btn.classList.add('copied')
+        btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg> Copied!`
+        setTimeout(() => {
+          btn.classList.remove('copied')
+          btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z"/></svg> Copy`
+        }, 2200)
+      }).catch(() => {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+        btn.classList.add('copied')
+        btn.textContent = '✓ Copied!'
+        setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'Copy' }, 2200)
+      })
+    })
+  })
+}
+
+/* ── Animated step strip for install section ─────────────────── */
+function initInstallSteps() {
+  const header = document.querySelector('.section-header h2')
+  if (!header || !header.textContent.includes('60 seconds')) return
+
+  const steps = [
+    { n: '01', label: 'Download package' },
+    { n: '02', label: 'Install with dpkg / rpm' },
+    { n: '03', label: 'Enable systemd service' },
+  ]
+
+  const strip = document.createElement('div')
+  strip.className = 'install-steps reveal'
+  strip.setAttribute('aria-hidden', 'true')
+
+  steps.forEach((s, i) => {
+    const step = document.createElement('div')
+    step.className = 'install-step'
+    step.innerHTML = `<span class="install-step-num">${s.n}</span><span class="install-step-label">${s.label}</span>`
+    strip.appendChild(step)
+
+    if (i < steps.length - 1) {
+      const conn = document.createElement('div')
+      conn.className = 'install-step-connector'
+      strip.appendChild(conn)
+    }
+  })
+
+  header.closest('.section-header').insertAdjacentElement('afterend', strip)
 }
 
 /* ── Render feature cards ────────────────────────────────────── */
@@ -409,6 +523,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Visual enhancements
   initNavScroll()
   initHeroOrbs()
+  initInstallSteps()
+  wrapCodeLines()
+  initCopyButtons()
   initScrollReveal()
   initCounters()
   initTypewriter()
