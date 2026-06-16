@@ -617,9 +617,9 @@ ul { list-style: none; }
 }
 
 .card:hover {
-  border-color: rgba(167,139,250,0.3);
-  transform: translateY(-4px);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4), var(--glow-sm);
+  border-color: rgba(167,139,250,0.5);
+  transform: translateY(-6px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 30px rgba(167,139,250,0.4), 0 0 60px rgba(167,139,250,0.12);
 }
 
 .card:hover::before {
@@ -874,6 +874,30 @@ ul { list-style: none; }
   .hero-orb-3 { animation: orbFloat3 10s ease-in-out infinite; }
 }
 
+/* Page-level ambient orbs (non-hero pages) */
+.page-orb {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.6;
+}
+.page-orb-1 {
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(167,139,250,0.07) 0%, transparent 70%);
+  top: -200px; right: -100px;
+}
+.page-orb-2 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(34,211,238,0.05) 0%, transparent 70%);
+  bottom: -150px; left: -100px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .page-orb-1 { animation: orbFloat1 22s ease-in-out infinite; }
+  .page-orb-2 { animation: orbFloat2 30s ease-in-out infinite; }
+}
+
 /* Bottom wave curve */
 .hero::after {
   content: '';
@@ -1047,6 +1071,19 @@ ul { list-style: none; }
 
 .comparison-table tbody tr:hover td {
   background: rgba(255,255,255,0.025);
+}
+
+/* Staggered row entrance */
+@media (prefers-reduced-motion: no-preference) {
+  .comparison-table tbody tr {
+    opacity: 0;
+    transform: translateX(-16px);
+    transition: opacity 0.5s cubic-bezier(0.4,0,0.2,1), transform 0.5s cubic-bezier(0.4,0,0.2,1);
+  }
+  .comparison-table tbody tr.row-visible {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .comparison-table td:nth-child(1) { color: var(--text); }

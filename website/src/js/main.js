@@ -32,7 +32,7 @@ function injectNav() {
   const isIndex = currentPage === '' || currentPage === 'index.html'
 
   const links = SITE.nav.map(n => {
-    const active = currentPage === n.href || (isIndex && false)
+    const active = currentPage === n.href || (isIndex && n.href === 'index.html')
     return `<a href="${base}${n.href}" class="${active ? 'active' : ''}">${n.label}</a>`
   }).join('')
 
@@ -536,6 +536,43 @@ function initTypewriter() {
   setTimeout(type, 600)
 }
 
+/* ── Comparison table staggered row reveal ───────────────────── */
+function initTableReveal() {
+  if (!('IntersectionObserver' in window) ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.querySelectorAll('.comparison-table tbody tr').forEach(r => r.classList.add('row-visible'))
+    return
+  }
+
+  const tables = document.querySelectorAll('.comparison-table')
+  if (!tables.length) return
+
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (!e.isIntersecting) return
+      const rows = e.target.querySelectorAll('tbody tr')
+      rows.forEach((row, i) => {
+        setTimeout(() => row.classList.add('row-visible'), i * 70)
+      })
+      io.unobserve(e.target)
+    })
+  }, { threshold: 0.15 })
+
+  tables.forEach(t => io.observe(t))
+}
+
+/* ── Ambient orbs on non-hero pages ─────────────────────────── */
+function initPageOrbs() {
+  if (document.querySelector('.hero')) return
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  ;[1, 2].forEach(n => {
+    const orb = document.createElement('div')
+    orb.className = `page-orb page-orb-${n}`
+    orb.setAttribute('aria-hidden', 'true')
+    document.body.prepend(orb)
+  })
+}
+
 /* ── Boot ────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   initTheme()
@@ -554,10 +591,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // Visual enhancements
   initNavScroll()
   initHeroOrbs()
+  initPageOrbs()
   initInstallSteps()
   wrapCodeLines()
   initCopyButtons()
   initScrollReveal()
+  initTableReveal()
   initCounters()
   initTypewriter()
 })
