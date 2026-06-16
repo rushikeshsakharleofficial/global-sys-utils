@@ -235,15 +235,17 @@ function renderFAQ(containerId) {
 function renderBlog(containerId, limit) {
   const el = document.getElementById(containerId)
   if (!el) return
+  const base = getBase()
   const posts = limit ? SITE.blog.slice(0, limit) : SITE.blog
   el.innerHTML = posts.map(p => `
-    <div class="blog-card">
+    <a class="blog-card" href="${base}blog-post.html#${p.slug}" style="display:block;text-decoration:none;color:inherit">
       <div class="blog-date">${p.date}</div>
       ${p.badge ? `<span class="badge badge-primary" style="margin-bottom:8px">${p.badge}</span>` : ''}
       <h3 class="blog-title">${p.title}</h3>
       <p class="blog-body">${p.body}</p>
       <div class="blog-tags">${(p.tags || []).map(t => `<span class="badge badge-surface">${t}</span>`).join('')}</div>
-    </div>
+      <div style="margin-top:12px;font-size:0.8rem;color:var(--primary);font-weight:500">Read more →</div>
+    </a>
   `).join('')
 }
 

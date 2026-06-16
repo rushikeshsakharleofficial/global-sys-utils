@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="base-path" content="/global-sys-utils/" />
+  <title>Blog — global-sys-utils</title>
+  <script>
+    ;(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)})()
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/global-sys-utils/favicon.svg" />
+  <link rel="stylesheet" href="./src/css/main.css" />
+</head>
+<body>
+<div class="page-content">
+  <div class="page-hero section-sm">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="./index.html">Home</a>
+        <span>/</span>
+        <a href="./blog.html">Blog</a>
+        <span>/</span>
+        <span id="breadcrumb-title">Post</span>
+      </div>
+      <div id="post-meta" style="margin-bottom:12px"></div>
+      <h1 class="text-headline" id="post-title">Loading…</h1>
+      <p style="color:var(--muted);margin-top:12px;font-family:var(--font-mono);font-size:0.75rem" id="post-date"></p>
+    </div>
+  </div>
+  <section class="section-sm">
+    <div class="container">
+      <div class="prose" id="post-body"></div>
+      <div style="margin-top:48px;padding-top:24px;border-top:1px solid var(--border-subtle)">
+        <a class="btn btn-ghost" href="./blog.html">← All posts</a>
+      </div>
+    </div>
+  </section>
+</div>
+<script type="module" src="./src/js/main.js"></script>
+<script type="module">
+import { SITE } from './src/config/site.js'
+
+const slug = location.hash.slice(1) || new URLSearchParams(location.search).get('slug')
+const post = SITE.blog.find(p => p.slug === slug)
+
+if (!post) {
+  document.getElementById('post-title').textContent = 'Post not found'
+  document.getElementById('post-body').innerHTML = '<p>This post doesn\'t exist. <a href="./blog.html">Back to blog →</a></p>'
+} else {
+  document.title = post.title + ' — global-sys-utils'
+  document.getElementById('breadcrumb-title').textContent = post.title
+  document.getElementById('post-title').textContent = post.title
+  document.getElementById('post-date').textContent = post.date
+  if (post.badge) {
+    document.getElementById('post-meta').innerHTML = `<span class="badge badge-primary">${post.badge}</span>`
+  }
+  if (post.tags?.length) {
+    document.getElementById('post-meta').innerHTML += ' ' + post.tags.map(t => `<span class="badge badge-surface">${t}</span>`).join(' ')
+  }
+  document.getElementById('post-body').innerHTML = `<p>${post.body}</p>`
+}
+</script>
+</body>
+</html>

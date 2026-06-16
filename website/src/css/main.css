@@ -516,6 +516,7 @@ ul { list-style: none; }
   line-height: 1.7;
   overflow-x: auto;
   color: var(--code-path);
+  white-space: pre-wrap;
 }
 
 .code-block .cmd   { color: var(--code-cmd); }
