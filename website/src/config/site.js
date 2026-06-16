@@ -26,8 +26,9 @@ export const SITE = {
 
   /* ── Navigation links ──────────────────────────────────── */
   nav: [
-    { label: 'Features',  href: 'features.html' },
-    { label: 'Projects',  href: 'projects.html' },
+    { label: 'Home',      href: 'index.html'     },
+    { label: 'Features',  href: 'features.html'  },
+    { label: 'Projects',  href: 'projects.html'  },
     { label: 'Blog',      href: 'blog.html'      },
     { label: 'Contact',   href: 'contact.html'   },
   ],

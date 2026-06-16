@@ -276,6 +276,123 @@ function renderProjects(containerId) {
 /* ── Expose toggle for inline onclick ────────────────────────── */
 window.__toggleTheme = toggleTheme
 
+/* ── Nav scroll effect ───────────────────────────────────────── */
+function initNavScroll() {
+  const nav = document.getElementById('site-nav')
+  if (!nav) return
+  const update = () => nav.classList.toggle('nav-scrolled', window.scrollY > 40)
+  window.addEventListener('scroll', update, { passive: true })
+  update()
+}
+
+/* ── Hero orbs (injected, not in static HTML) ────────────────── */
+function initHeroOrbs() {
+  const hero = document.querySelector('.hero')
+  if (!hero) return
+  ;[1, 2, 3].forEach(n => {
+    const orb = document.createElement('div')
+    orb.className = `hero-orb hero-orb-${n}`
+    hero.prepend(orb)
+  })
+}
+
+/* ── Wave dividers between sections ─────────────────────────── */
+function injectWaveDivider(afterEl, fillColor) {
+  if (!afterEl) return
+  const div = document.createElement('div')
+  div.className = 'wave-divider'
+  div.setAttribute('aria-hidden', 'true')
+  div.innerHTML = `<svg viewBox="0 0 1440 60" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" height="60"><path d="M0,40 C360,80 1080,0 1440,40 L1440,60 L0,60 Z" fill="${fillColor}"/></svg>`
+  afterEl.insertAdjacentElement('afterend', div)
+}
+
+/* ── Scroll reveal via IntersectionObserver ──────────────────── */
+function initScrollReveal() {
+  if (!('IntersectionObserver' in window) ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.querySelectorAll('.card, .blog-card, .testimonial-card, .release-card, .reveal')
+      .forEach(el => el.classList.add('visible'))
+    return
+  }
+
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible')
+        io.unobserve(e.target)
+      }
+    })
+  }, { threshold: 0.08, rootMargin: '0px 0px -32px 0px' })
+
+  document.querySelectorAll('.card, .blog-card, .testimonial-card, .release-card, .reveal')
+    .forEach((el, i) => {
+      el.style.setProperty('--reveal-delay', `${(i % 4) * 0.08}s`)
+      io.observe(el)
+    })
+}
+
+/* ── Animated stat counters ──────────────────────────────────── */
+function animateCounter(el) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const raw = el.dataset.target || el.textContent.replace(/[^0-9]/g, '')
+  const target = parseInt(raw, 10)
+  const suffix = el.dataset.suffix || el.textContent.replace(/[0-9]/g, '').trim()
+  const duration = 1400
+  const start = performance.now()
+
+  const tick = now => {
+    const t = Math.min((now - start) / duration, 1)
+    const eased = 1 - Math.pow(1 - t, 3)
+    el.textContent = Math.round(eased * target) + suffix
+    if (t < 1) requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+}
+
+function initCounters() {
+  const els = document.querySelectorAll('[data-counter]')
+  if (!els.length) return
+
+  if (!('IntersectionObserver' in window)) {
+    els.forEach(animateCounter)
+    return
+  }
+
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        animateCounter(e.target)
+        io.unobserve(e.target)
+      }
+    })
+  }, { threshold: 0.5 })
+
+  els.forEach(el => io.observe(el))
+}
+
+/* ── Typewriter effect for terminal cursor line ──────────────── */
+function initTypewriter() {
+  const el = document.querySelector('[data-typewriter]')
+  if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+  const text = el.dataset.typewriter
+  const parent = el.parentElement
+  el.textContent = ''
+
+  let i = 0
+  const cursor = document.createElement('span')
+  cursor.className = 'terminal-cursor'
+  parent && parent.appendChild(cursor)
+
+  const type = () => {
+    if (i < text.length) {
+      el.textContent += text[i++]
+      setTimeout(type, 35 + Math.random() * 25)
+    }
+  }
+  setTimeout(type, 600)
+}
+
 /* ── Boot ────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   initTheme()
@@ -290,4 +407,11 @@ document.addEventListener('DOMContentLoaded', () => {
   renderBlog('blog-grid', 3)
   renderBlog('blog-all-grid')
   renderProjects('projects-grid')
+
+  // Visual enhancements
+  initNavScroll()
+  initHeroOrbs()
+  initScrollReveal()
+  initCounters()
+  initTypewriter()
 })
