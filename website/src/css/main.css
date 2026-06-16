@@ -1212,9 +1212,9 @@ ul { list-style: none; }
 
 /* ── Page hero (inner pages) ─────────────────────────────────── */
 .page-hero {
-  padding: var(--space-16) 0 var(--space-12);
+  padding: var(--space-16) 0 var(--space-8);
   border-bottom: 1px solid var(--border-subtle);
-  margin-bottom: var(--space-16);
+  margin-bottom: 0;
   position: relative;
   overflow: hidden;
 }
@@ -1242,6 +1242,13 @@ ul { list-style: none; }
 
 .page-hero .breadcrumb a { color: var(--primary); }
 .page-hero .breadcrumb span { color: var(--muted); }
+
+/* Reduce top padding of first section after page-hero */
+.page-hero + .section,
+.page-hero + .section-alt,
+.page-hero + .section-sm {
+  padding-top: var(--space-12);
+}
 
 /* ── Installation tabs ───────────────────────────────────────── */
 @keyframes tabPanelIn {

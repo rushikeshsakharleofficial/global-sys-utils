@@ -69,11 +69,21 @@ function injectNav() {
   document.body.prepend(mobileMenu)
   document.body.prepend(nav)
 
-  document.getElementById('mobile-toggle').addEventListener('click', function() {
+  const toggleBtn = document.getElementById('mobile-toggle')
+  function closeMobileMenu() {
+    const menu = document.getElementById('mobile-menu')
+    menu.classList.remove('open')
+    toggleBtn.setAttribute('aria-expanded', 'false')
+    toggleBtn.textContent = '☰'
+  }
+  toggleBtn.addEventListener('click', function() {
     const menu = document.getElementById('mobile-menu')
     const open = menu.classList.toggle('open')
     this.setAttribute('aria-expanded', String(open))
     this.textContent = open ? '✕' : '☰'
+  })
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeMobileMenu()
   })
 
   markActiveNav()
@@ -250,8 +260,9 @@ function initCopyButtons() {
 
 /* ── Animated step strip for install section ─────────────────── */
 function initInstallSteps() {
-  const header = document.querySelector('.section-header h2')
-  if (!header || !header.textContent.includes('60 seconds')) return
+  const header = Array.from(document.querySelectorAll('.section-header h2'))
+    .find(h => h.textContent.includes('60 seconds'))
+  if (!header) return
 
   const steps = [
     { n: '01', label: 'Download package' },
