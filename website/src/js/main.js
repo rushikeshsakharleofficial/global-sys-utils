@@ -2,9 +2,7 @@ import { SITE } from '../config/site.js'
 
 /* ── Theme ──────────────────────────────────────────────────── */
 function initTheme() {
-  const saved = localStorage.getItem('theme')
-  const system = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  const theme = saved || system
+  const theme = localStorage.getItem('theme') || 'dark'
   document.documentElement.setAttribute('data-theme', theme)
   updateThemeToggle(theme)
 }
