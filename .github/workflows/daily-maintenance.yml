@@ -2,6 +2,7 @@ name: Daily Maintenance
 
 on:
   schedule:
+    # 03:00 UTC = 08:30 Asia/Kolkata
     - cron: '0 3 * * *'
   workflow_dispatch:
 
