@@ -30,11 +30,12 @@
 9. [Configuration Reference](#configuration-reference)
 10. [Build from Source](#build-from-source)
 11. [Testing](#testing)
-12. [Project Structure](#project-structure)
-13. [Documentation](#documentation)
-14. [Contributing](#contributing)
-15. [Security](#security)
-16. [License](#license)
+12. [Maintenance](#maintenance)
+13. [Project Structure](#project-structure)
+14. [Documentation](#documentation)
+15. [Contributing](#contributing)
+16. [Security](#security)
+17. [License](#license)
 
 ---
 
@@ -447,6 +448,22 @@ Covers: date extraction, S3/GCS URL parsing, object key construction, local path
 
 ---
 
+## Maintenance
+
+Daily maintenance is handled through GitHub automation and the repository maintenance policy.
+
+- Dependabot checks Go modules, Python requirements, and GitHub Actions daily.
+- Daily CI validates Go tests, Python tests, DEB/RPM package builds, and documentation consistency.
+- Branch names stay short and area-based, for example `deps-go`, `deps-python`, `ci-fix`, `package-fix`, `docs-update`, `script-cleanup`, and `throughput-fix`.
+- Dependency/library updates should be accepted when they fix security issues, compatibility issues, bugs, or clearly improve maintainability.
+- Scripts should stay compact and simple; avoid replacing standard-library code unless a new library clearly reduces risk or complexity.
+- Throughput optimizations must be measured and must preserve atomic writes, disk free-space guards, config compatibility, and package compatibility.
+- Any behavior change must update matching README, man page, docs, package metadata, and website/docs content when present.
+
+See [`docs/maintenance.md`](docs/maintenance.md) for the full policy.
+
+---
+
 ## Project Structure
 
 ```
@@ -464,6 +481,8 @@ global-sys-utils/
 │   ├── global.conf             # Documented main config (installed to /etc/)
 │   └── global.conf.d/
 │       └── example.conf        # Annotated per-app job template
+├── docs/
+│   └── maintenance.md          # Daily maintenance and PR policy
 ├── installers/                 # Pre-built .deb and .rpm packages per release
 ├── man/
 │   └── global-logrotate.1      # Man page
@@ -487,6 +506,7 @@ global-sys-utils/
 |----------|-------------|
 | [config/global.conf](config/global.conf) | Annotated main configuration file with all keys and defaults |
 | [config/global.conf.d/](config/global.conf.d/) | Per-app job config templates |
+| [docs/maintenance.md](docs/maintenance.md) | Daily maintenance, branch, dependency, script, and documentation policy |
 | [man/global-logrotate.1](man/global-logrotate.1) | Man page (`man global-logrotate` after install) |
 | [packaging/systemd/](packaging/systemd/) | systemd service and timer unit files |
 | [installers/](installers/) | Pre-built `.deb` and `.rpm` packages by release |
@@ -496,36 +516,38 @@ global-sys-utils/
 
 ## Contributing
 
-Contributions are **fully open** — bug fixes, refactors, new features, architecture changes, documentation improvements, additional cloud providers, new packaging formats, tests, anything. No change is too large or too small.
+Contributions are welcome when they improve reliability, compatibility, security, performance, packaging, or documentation.
 
 ### How to contribute
 
 1. **Fork** the repository
-2. **Create a branch** — any name works; use something descriptive like `feat/add-azure-backup` or `fix/retry-jitter`
-3. **Make your changes** — you can modify any file, restructure the codebase, add new tools, or change existing behaviour; there are no off-limits areas
-4. **Run the tests** before opening a PR:
+2. **Create a short branch** based on the change area, such as `deps-go`, `deps-python`, `ci-fix`, `package-fix`, `docs-update`, `script-cleanup`, or `throughput-fix`
+3. **Make focused changes** and avoid unrelated rewrites in the same PR
+4. **Update docs** when behavior, packaging, commands, config, or install steps change
+5. **Run the tests** before opening a PR:
    ```bash
    make test
    go vet ./...
    ```
-5. **Open a pull request** against `main` with a clear description of what changed and why
+6. **Open a pull request** against `main` with a clear description of what changed and why
 
 ### What we welcome
 
-- New cloud providers (Azure Blob Storage, MinIO, Backblaze B2, …)
-- New packaging formats (Arch Linux PKGBUILD, Homebrew formula, Docker image, …)
-- Performance improvements to the Go rotation engine
-- Additional Python utility improvements (progress bars, structured logging, …)
+- Security updates and dependency/library updates
+- Package install/uninstall fixes
+- systemd service and timer fixes
+- Cloud backup/restore script improvements
+- Measured throughput improvements to the Go rotation engine
+- Compact script cleanups that reduce complexity
 - Expanded test coverage
-- Documentation and example improvements
-- Full rewrites or refactors if they improve the codebase
-- New configuration options and features
-- Security hardening
+- Documentation and example updates
 
 ### Guidelines
 
-- Keep `make test` passing (or fix the tests as part of your change)
-- For large architectural changes, open an issue first to discuss — not required, but helps coordinate
+- Keep `make test` passing, or fix tests as part of the change
+- Keep scripts compact and readable
+- Avoid speculative optimizations and cosmetic-only PRs
+- For larger architecture changes, open an issue first to discuss
 - No CLA, no contributor agreement — contributions are accepted under the project's MIT License
 
 **Bug reports and feature requests:** open a [GitHub issue](https://github.com/rushikeshsakharleofficial/global-sys-utils/issues).
