@@ -21,6 +21,16 @@ from google.cloud import storage
 logger = logging.getLogger(__name__)
 
 
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a positive integer") from None
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
 class AdaptiveThrottle:
     """Dynamically caps concurrent workers based on live CPU and memory usage."""
 
@@ -140,11 +150,11 @@ def main() -> None:
     ap.add_argument('--destination', required=True,               help='Local directory to restore into')
     ap.add_argument('--pattern',     default='*',                 help='Filename glob to include (default: *)')
     ap.add_argument('--exclude',     action='append', default=[], help='Filename glob to exclude; repeatable', metavar='GLOB')
-    ap.add_argument('--parallel',    type=int, default=4,         help='Max concurrent downloads; adaptive throttle may use fewer (default: 4)')
+    ap.add_argument('--parallel',    type=_positive_int, default=4, help='Max concurrent downloads; adaptive throttle may use fewer (default: 4)')
     ap.add_argument('--project',     default=None,                help='GCP project ID')
     ap.add_argument('--credentials', default=None,                help='Path to service account JSON key file')
-    ap.add_argument('--retries',     type=int, default=3,         help='Download retry count (default: 3)')
-    ap.add_argument('--timeout',     type=int, default=300,       help='Per-operation timeout in seconds (default: 300)')
+    ap.add_argument('--retries',     type=_positive_int, default=3, help='Download retry count (default: 3)')
+    ap.add_argument('--timeout',     type=_positive_int, default=300, help='Per-operation timeout in seconds (default: 300)')
     ap.add_argument('--flatten',     action='store_true',         help='Put all files directly in destination (no subdirs)')
     ap.add_argument('--dry-run',     action='store_true', dest='dry_run', help='Print actions without downloading anything')
     ap.add_argument('--verbose',     action='store_true',         help='Enable debug logging')
