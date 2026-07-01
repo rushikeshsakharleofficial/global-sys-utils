@@ -43,7 +43,7 @@ jobs:
         run: go test ./cmd/global-logrotate/ -race -count=1 -v
 
       - name: Python tests
-        run: python -m pytest tests/test_utils.py -v
+        run: python -m pytest tests -v
 
       - name: Build packages
         run: make packages-all
