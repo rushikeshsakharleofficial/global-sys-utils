@@ -13,6 +13,7 @@ on:
       - 'man/**'
       - 'go.mod'
       - 'go.sum'
+      - 'requirements.txt'
 
 jobs:
   release:

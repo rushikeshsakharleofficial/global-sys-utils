@@ -6,26 +6,22 @@ if command -v mandb >/dev/null 2>&1; then
     mandb -q 2>/dev/null || true
 fi
 
-# Install Python dependencies for cloud backup tools.
-# Try --break-system-packages first (required on Debian 12+/Ubuntu 22.04+ due to PEP 668),
-# fall back without it for older distros, warn if pip3 is missing.
-_pip_install() {
-    pip3 install --quiet \
-        "boto3>=1.34.0" \
-        "google-cloud-storage>=2.16.0" \
-        "google-auth>=2.28.0" \
-        "psutil>=5.9.0" \
-        "$@"
-}
+# Install Python dependencies for cloud backup tools from the packaged
+# requirements file so source dependency updates and package installs stay aligned.
+REQ_FILE=/usr/share/global-sys-utils/requirements.txt
 
 if command -v pip3 >/dev/null 2>&1; then
     echo "Installing Python dependencies for global-logrotate cloud tools..."
-    _pip_install --break-system-packages 2>/dev/null || \
-    _pip_install 2>/dev/null || \
-    echo "Warning: pip install failed. Run manually: pip3 install -r /usr/share/global-sys-utils/requirements.txt"
+    if [ -f "$REQ_FILE" ]; then
+        pip3 install --quiet --break-system-packages -r "$REQ_FILE" 2>/dev/null || \
+        pip3 install --quiet -r "$REQ_FILE" 2>/dev/null || \
+        echo "Warning: pip install failed. Run manually: pip3 install -r $REQ_FILE"
+    else
+        echo "Warning: $REQ_FILE not found. Install cloud tool dependencies manually."
+    fi
 else
     echo "Warning: pip3 not found. Install Python dependencies manually:"
-    echo "  pip3 install -r /usr/share/global-sys-utils/requirements.txt"
+    echo "  pip3 install -r $REQ_FILE"
 fi
 
 # Reload systemd and enable the daemon service

@@ -96,20 +96,17 @@ install -m 644 %{_sourcedir}/global-logrotate-once.timer   %{buildroot}/usr/lib/
 /usr/bin/mandb -q 2>/dev/null || true
 %systemd_post global-logrotate.service global-logrotate-once.timer
 
-# Install Python dependencies for cloud backup tools.
-# --break-system-packages is required on RHEL 9+ / Fedora 38+ (PEP 668).
-_pip_install() {
-    pip3 install --quiet \
-        "boto3>=1.34.0" \
-        "google-cloud-storage>=2.16.0" \
-        "google-auth>=2.28.0" \
-        "psutil>=5.9.0" \
-        "$@"
-}
+# Install Python dependencies for cloud backup tools from the packaged
+# requirements file so source dependency updates and package installs stay aligned.
+REQ_FILE=/usr/share/global-sys-utils/requirements.txt
 if command -v pip3 >/dev/null 2>&1; then
-    _pip_install --break-system-packages 2>/dev/null || \
-    _pip_install 2>/dev/null || \
-    echo "Warning: pip install failed. Run: pip3 install -r /usr/share/global-sys-utils/requirements.txt"
+    if [ -f "$REQ_FILE" ]; then
+        pip3 install --quiet --break-system-packages -r "$REQ_FILE" 2>/dev/null || \
+        pip3 install --quiet -r "$REQ_FILE" 2>/dev/null || \
+        echo "Warning: pip install failed. Run: pip3 install -r $REQ_FILE"
+    else
+        echo "Warning: $REQ_FILE not found. Install cloud tool dependencies manually."
+    fi
 else
     echo "Warning: pip3 not found. Install manually: pip3 install -r /usr/share/global-sys-utils/requirements.txt"
 fi
