@@ -9,6 +9,7 @@ import logging
 import os
 import random
 import sys
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -108,31 +109,79 @@ def _parse_gcs_url(url: str) -> tuple[str, str]:
     return bucket, prefix.rstrip('/')
 
 
-def _local_path(blob_name: str, prefix: str, dest: str, flatten: bool) -> str:
-    if flatten:
-        return str(Path(dest) / Path(blob_name).name)
-    return str(Path(dest) / blob_name.removeprefix(prefix).lstrip('/'))
+def _local_path(key: str, prefix: str, dest: str, flatten: bool) -> str:
+    """Map an untrusted cloud object key to a safe path inside dest."""
+    if not key or key.startswith('/') or '\\' in key or '\x00' in key:
+        raise ValueError(f"unsafe object key: {key!r}")
+    parts = key.split('/')
+    if any(part in ('', '.', '..') for part in parts):
+        raise ValueError(f"unsafe object key: {key!r}")
 
+    if prefix:
+        if prefix.startswith('/') or '\\' in prefix or any(
+            part in ('', '.', '..') for part in prefix.split('/')
+        ):
+            raise ValueError(f"unsafe source prefix: {prefix!r}")
+        prefix_parts = prefix.split('/')
+        if parts[:len(prefix_parts)] != prefix_parts:
+            raise ValueError(f"key is outside source prefix: {key!r}")
+        parts = parts[len(prefix_parts):]
+
+    if not parts:
+        raise ValueError(f"object key does not name a file: {key!r}")
+    if flatten:
+        parts = parts[-1:]
+
+    root = Path(dest).resolve()
+    target = root.joinpath(*parts)
+    if not target.resolve().is_relative_to(root):
+        raise ValueError(f"object key escapes destination: {key!r}")
+    return str(target)
+
+
+def _restore_targets(keys: list[str], prefix: str, dest: str, flatten: bool) -> dict[str, str]:
+    """Validate the entire restore plan before any file is downloaded."""
+    targets: dict[str, str] = {}
+    owners: dict[str, str] = {}
+    for key in keys:
+        target = _local_path(key, prefix, dest, flatten)
+        if target in owners and owners[target] != key:
+            raise ValueError(f"multiple objects target the same file: {owners[target]!r}, {key!r}")
+        owners[target] = key
+        targets[key] = target
+    return targets
 
 def _download(client: Any, bucket_name: str, blob_name: str, dest_path: str, retries: int, timeout: int) -> None:
+    """Download to a private temporary file; publish without overwriting."""
     last_err: Exception | None = None
     for attempt in range(1, retries + 1):
         if attempt > 1:
             delay = min(2 ** (attempt - 2) + random.uniform(0, 0.5), 30)
             time.sleep(delay)
+        temp_path: str | None = None
         try:
-            Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
+            parent = Path(dest_path).parent
+            parent.mkdir(parents=True, exist_ok=True)
+            fd, temp_path = tempfile.mkstemp(prefix=f".{Path(dest_path).name}.", suffix=".part", dir=parent)
+            os.close(fd)
             blob = client.bucket(bucket_name).blob(blob_name)
             blob.chunk_size = 8 * 1024 * 1024
-            blob.download_to_filename(dest_path, timeout=timeout)
+            blob.download_to_filename(temp_path, timeout=timeout)
+            # Hard linking is atomic and fails if the destination already exists.
+            os.link(temp_path, dest_path)
             return
+        except FileExistsError:
+            raise
         except Exception as e:
-            if os.path.exists(dest_path):
-                os.remove(dest_path)
             last_err = e
             logger.debug("download attempt %d/%d failed for %s: %s", attempt, retries, blob_name, e)
+        finally:
+            if temp_path is not None:
+                try:
+                    os.unlink(temp_path)
+                except FileNotFoundError:
+                    pass
     raise RuntimeError(f"download gs://{bucket_name}/{blob_name} failed after {retries} attempt(s): {last_err}")
-
 
 def main() -> None:
     ap = argparse.ArgumentParser(
@@ -184,6 +233,8 @@ def main() -> None:
 
     candidates: list[str] = []
     for name in blobs:
+        if name.endswith('/'):
+            continue  # Ignore directory marker objects.
         base = Path(name).name
         if not fnmatch.fnmatch(base, args.pattern):
             continue
@@ -196,9 +247,14 @@ def main() -> None:
         sys.exit(0)
     logger.info("Found %d blob(s) to restore", len(candidates))
 
+    try:
+        targets = _restore_targets(candidates, prefix, args.destination, args.flatten)
+    except ValueError as e:
+        sys.exit(f"ERROR: unsafe restore plan: {e}")
+
     if args.dry_run:
         for name in candidates:
-            dest = _local_path(name, prefix, args.destination, args.flatten)
+            dest = targets[name]
             logger.info("[DRY-RUN] Would download: gs://%s/%s -> %s", bucket_name, name, dest)
         logger.info("\nTotal: %d blob(s)", len(candidates))
         return
@@ -208,12 +264,15 @@ def main() -> None:
     throttle = AdaptiveThrottle(min_workers=1, max_workers=args.parallel)
 
     def process(blob_name: str) -> bool:
-        dest = _local_path(blob_name, prefix, args.destination, args.flatten)
+        dest = targets[blob_name]
         if os.path.exists(dest):
             logger.info("Skipping (exists): %s", dest)
             return True
         try:
             _download(client, bucket_name, blob_name, dest, retries=args.retries, timeout=args.timeout)
+        except FileExistsError:
+            logger.info("Skipping (exists): %s", dest)
+            return True
         except Exception as e:
             logger.error("%s: %s", blob_name, e)
             return False
