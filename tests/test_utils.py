@@ -258,6 +258,89 @@ class TestLocalPath(unittest.TestCase):
         self.assertTrue(p.startswith("/out"))
 
 
+
+class TestRestoreSafety(unittest.TestCase):
+    """Untrusted cloud keys must never escape the restore directory."""
+
+    def test_valid_paths_and_prefix_boundaries(self):
+        for mod in (aws_restore, gcp_restore):
+            with tempfile.TemporaryDirectory() as root:
+                got = mod._local_path("logs/node/app.gz", "logs", root, False)
+                self.assertEqual(got, str(Path(root) / "node" / "app.gz"))
+                flat = mod._local_path("logs/node/app.gz", "logs", root, True)
+                self.assertEqual(flat, str(Path(root) / "app.gz"))
+                with self.assertRaises(ValueError):
+                    mod._local_path("logs2/app.gz", "logs", root, False)
+
+    def test_traversal_is_rejected(self):
+        unsafe = ("logs/../outside.gz", "logs/./file.gz", "/etc/passwd",
+                  "logs//file.gz", "logs/sub\\bad.gz", "logs/\x00bad.gz", "")
+        for mod in (aws_restore, gcp_restore):
+            with tempfile.TemporaryDirectory() as root:
+                for key in unsafe:
+                    with self.subTest(module=mod.__name__, key=key):
+                        with self.assertRaises(ValueError):
+                            mod._local_path(key, "logs", root, False)
+
+    def test_symlink_escape_is_rejected(self):
+        for mod in (aws_restore, gcp_restore):
+            with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as outside:
+                try:
+                    (Path(root) / "link").symlink_to(outside, target_is_directory=True)
+                except (OSError, NotImplementedError):
+                    self.skipTest("symlinks unavailable")
+                with self.assertRaises(ValueError):
+                    mod._local_path("logs/link/file.gz", "logs", root, False)
+
+    def test_flatten_collision_fails_before_download(self):
+        for mod in (aws_restore, gcp_restore):
+            with tempfile.TemporaryDirectory() as root:
+                keys = ["logs/a/file.gz", "logs/b/file.gz"]
+                with self.assertRaises(ValueError):
+                    mod._restore_targets(keys, "logs", root, True)
+                self.assertEqual(len(mod._restore_targets(keys, "logs", root, False)), 2)
+
+    def test_failed_download_leaves_no_partial_file(self):
+        with tempfile.TemporaryDirectory() as root:
+            dest = str(Path(root) / "a.gz")
+            def fail_s3(_bucket, _key, temp, **_kwargs):
+                Path(temp).write_bytes(b"partial")
+                raise _ClientError("interrupted")
+            s3 = MagicMock()
+            s3.download_file.side_effect = fail_s3
+            with self.assertRaises(RuntimeError):
+                aws_restore._download(s3, "b", "k", dest, retries=1)
+            self.assertEqual(list(Path(root).iterdir()), [])
+
+            def fail_gcp(temp, **_kwargs):
+                Path(temp).write_bytes(b"partial")
+                raise _GoogleAPIError("interrupted")
+            gcp = MagicMock()
+            gcp.bucket.return_value.blob.return_value.download_to_filename.side_effect = fail_gcp
+            with self.assertRaises(RuntimeError):
+                gcp_restore._download(gcp, "b", "k", dest, retries=1, timeout=10)
+            self.assertEqual(list(Path(root).iterdir()), [])
+
+    def test_successful_download_is_atomic_and_no_clobber(self):
+        for mod in (aws_restore, gcp_restore):
+            with tempfile.TemporaryDirectory() as root:
+                dest = str(Path(root) / "a.gz")
+                def save_file(*args, **kwargs):
+                    Path(args[-1]).write_bytes(b"restored")
+                client = MagicMock()
+                if mod is aws_restore:
+                    client.download_file.side_effect = save_file
+                    download = lambda: mod._download(client, "b", "k", dest, retries=1)
+                else:
+                    client.bucket.return_value.blob.return_value.download_to_filename.side_effect = save_file
+                    download = lambda: mod._download(client, "b", "k", dest, retries=1, timeout=10)
+                download()
+                self.assertEqual(Path(dest).read_bytes(), b"restored")
+                with self.assertRaises(FileExistsError):
+                    download()
+                self.assertEqual(Path(dest).read_bytes(), b"restored")
+                self.assertEqual([p.name for p in Path(root).iterdir()], ["a.gz"])
+
 class TestMd5(unittest.TestCase):
 
     def test_known_content(self):
