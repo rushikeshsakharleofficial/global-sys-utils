@@ -1,0 +1,25 @@
+name: Restore regression checks
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/global-aws-restore'
+      - 'cmd/global-gcp-restore'
+      - 'tests/**'
+      - '.github/workflows/restore-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # Cloud SDKs are mocked in tests/test_utils.py; no credentials or pip installs.
+      - name: Run Python regression tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
